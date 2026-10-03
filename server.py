@@ -819,6 +819,11 @@ def request_session_token(handler: "Handler") -> str:
     return cookie.value if cookie else ""
 
 
+def mobile_allowed_origins() -> set[str]:
+    configured = os.environ.get("MOBILE_ALLOWED_ORIGINS", "capacitor://localhost,https://localhost")
+    return {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
+
+
 def client_ip(handler: "Handler") -> str:
     direct=handler.client_address[0] if handler.client_address else "unknown"
     if os.environ.get("TRUST_PROXY","false").lower()!="true": return direct
@@ -875,6 +880,12 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get("LOG_REQUESTS", "false").lower() == "true":
             super().log_message(fmt, *args)
 
+    def cors_headers(self) -> list[tuple[str,str]]:
+        origin = self.headers.get("Origin", "").rstrip("/")
+        if not urllib.parse.urlsplit(self.path).path.startswith("/api/") or origin not in mobile_allowed_origins():
+            return []
+        return [("Access-Control-Allow-Origin", origin), ("Vary", "Origin")]
+
     def send_json(self, status: int, payload: Any, extra_headers: list[tuple[str,str]] | None = None) -> None:
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
         self.send_response(status)
@@ -885,6 +896,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self' https://checkout.razorpay.com; connect-src 'self' https://api.razorpay.com https://verify.twilio.com; frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'")
+        for name,value in self.cors_headers(): self.send_header(name,value)
         for name,value in extra_headers or []: self.send_header(name,value)
         self.end_headers()
         self.wfile.write(encoded)
@@ -896,6 +908,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "private, max-age=300")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
+        for name,value in self.cors_headers(): self.send_header(name,value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -909,6 +922,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN" if disposition == "inline" else "DENY")
         self.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
+        for name,value in self.cors_headers(): self.send_header(name,value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -928,7 +942,20 @@ class Handler(BaseHTTPRequestHandler):
         return parsed
 
     def do_OPTIONS(self) -> None:
+        path = urllib.parse.urlsplit(self.path).path
+        origin = self.headers.get("Origin", "").rstrip("/")
+        requested_method = self.headers.get("Access-Control-Request-Method", "GET").upper()
+        requested_headers = {value.strip().lower() for value in self.headers.get("Access-Control-Request-Headers", "").split(",") if value.strip()}
+        if not path.startswith("/api/") or origin not in mobile_allowed_origins() or requested_method not in {"GET", "POST", "PATCH", "DELETE"} or not requested_headers.issubset({"authorization", "content-type"}):
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self.send_response(204)
+        for name,value in self.cors_headers(): self.send_header(name,value)
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+        self.send_header("Access-Control-Max-Age", "600")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -1028,6 +1055,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-transform")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
+        for name,value in self.cors_headers(): self.send_header(name,value)
         self.end_headers()
         self.wfile.write(b": connected\n\n")
         self.wfile.flush()

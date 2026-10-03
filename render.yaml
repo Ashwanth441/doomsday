@@ -17,3 +17,5 @@ services:
         value: /var/lib/doomsday/doomsday.sqlite3
       - key: SESSION_DAYS
         value: "30"
+      - key: MOBILE_ALLOWED_ORIGINS
+        value: "capacitor://localhost,https://localhost"

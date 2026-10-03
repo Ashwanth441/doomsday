@@ -65,6 +65,6 @@ The checks exercise two-tasker offers, task assignment, address privacy, chat ac
 
 ## Current scope
 
-The current build is an installable Progressive Web App, not a signed Play Store or App Store package. It provides phone OTP authentication, user profiles, task posting and discovery, offers, assignment, chat with server-sent live updates, task-state permissions, Razorpay checkout/Route payout integration, ratings, reports, blocks, disputes with evidence storage, notifications, admin controls, and English/Tamil interface strings. Email sign-in and native store packaging are not included in this first delivery.
+The project now includes the installable web app plus Capacitor iOS and Android projects. Native builds bundle the app UI, connect to the live API with a strict mobile-origin allowlist, keep mobile sessions in Keychain/Keystore-backed storage, request location only on demand, and use the native share sheet for private chat documents. Read [mobile/README.md](mobile/README.md) for build instructions and the production blockers that must be resolved before store submission. These projects are not signed or uploaded to either store.
 
 Payments require both Razorpay activation and manual, verified Route linked-account association per tasker. SMS and push require the matching provider credentials. The public OSM map opens to the selected coordinates; users can also use GPS or enter coordinates and a manual address.

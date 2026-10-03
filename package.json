@@ -1,0 +1,29 @@
+{
+  "name": "doomsday-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Doomsday iOS and Android application",
+  "scripts": {
+    "build:mobile": "node scripts/build-mobile.mjs",
+    "cap:sync": "pnpm run build:mobile && cap sync",
+    "assets:source": "node scripts/generate-brand-assets.mjs",
+    "assets:sync-native": "node scripts/sync-native-branding.mjs",
+    "cap:android": "pnpm run cap:sync && cap open android",
+    "cap:ios": "pnpm run cap:sync && cap open ios"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.1",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/browser": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/geolocation": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/share": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "esbuild": "^0.25.0",
+    "sharp": "^0.35.5"
+  }
+}

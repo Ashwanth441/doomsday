@@ -1,0 +1,24 @@
+{
+  "appId": "in.doomsday.marketplace",
+  "appName": "Doomsday",
+  "webDir": "mobile/www",
+  "backgroundColor": "#f6f5f1",
+  "server": {
+    "iosScheme": "capacitor",
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#f6f5f1",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "backgroundColor": "#f6f5f1",
+      "style": "LIGHT"
+    }
+  }
+}
