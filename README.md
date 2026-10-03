@@ -41,6 +41,8 @@ Chat supports one text message or one photo/document attachment per send. Suppor
 
 The default database is `data/doomsday.sqlite3`; set `DOOMSDAY_DB_PATH` to place it on a persistent volume. The schema uses foreign keys, transaction records, FTS5 search, and an R*Tree location index. Uploaded images are compressed in the browser, checked for image signatures and size on the server, then stored with their owning task or message. Exact task addresses and coordinates are returned only to the customer, assigned tasker, and admins; task discovery uses rounded coordinates.
 
+The Render Blueprint currently uses the Free plan for a demo. Render Free services have an ephemeral filesystem, so this app's SQLite database and uploaded files can disappear whenever the service sleeps, restarts, or redeploys. Use test accounts and sample data only. Before inviting real users, move to a paid service with persistent storage or migrate the app to a durable managed database.
+
 SQLite is suitable for a small single-instance launch. For multiple application instances or nationwide growth, migrate this schema and its state transitions to PostgreSQL with PostGIS, move images to private object storage, and use a shared event/push queue. Keep the API's server-side ownership and payment checks in place during that migration.
 
 ## Safety and operations

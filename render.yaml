@@ -2,14 +2,10 @@ services:
   - type: web
     name: doomsday
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     healthCheckPath: /api/health
     autoDeployTrigger: commit
-    disk:
-      name: doomsday-data
-      mountPath: /var/lib/doomsday
-      sizeGB: 1
     envVars:
       - key: HOST
         value: 0.0.0.0
