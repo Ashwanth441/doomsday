@@ -1,0 +1,12 @@
+{
+  "name": "Doomsday — Local tasks, done together",
+  "short_name": "Doomsday",
+  "description": "Get things done by people nearby.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#f6f5f1",
+  "lang": "en-IN",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

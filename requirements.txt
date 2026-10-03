@@ -1,0 +1,2 @@
+# Optional. In-app notifications work without this; install to send browser push.
+pywebpush>=2.0

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: doomsday
+    runtime: docker
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    disk:
+      name: doomsday-data
+      mountPath: /var/lib/doomsday
+      sizeGB: 1
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DOOMSDAY_DB_PATH
+        value: /var/lib/doomsday/doomsday.sqlite3
+      - key: SESSION_DAYS
+        value: "30"
