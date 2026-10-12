@@ -121,7 +121,7 @@ class _PgRow(dict):
 
 
 def _pg_row_factory(cursor):
-    columns = tuple(column.name for column in cursor.description)
+    columns = tuple(column.name for column in (cursor.description or ()))
     return lambda row: _PgRow(
         (name, value.tobytes() if isinstance(value, memoryview) else value)
         for name, value in zip(columns, row)
