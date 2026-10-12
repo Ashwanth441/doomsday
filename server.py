@@ -176,6 +176,9 @@ class _PgConnection:
         statement = statement.replace("?", "%s")
         return _PgCursor(self._conn.execute(statement, tuple(params or ())))
 
+    def commit(self):
+        self._conn.commit()
+
     def executescript(self, script: str):
         for statement in script.split(";"):
             if statement.strip():

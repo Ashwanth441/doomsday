@@ -21,6 +21,21 @@ import server  # noqa: E402
 
 
 class PostgreSQLSchemaTests(unittest.TestCase):
+    def test_postgres_connection_exposes_commit_for_rate_limiter(self):
+        class FakeConnection:
+            committed = False
+
+            def commit(self):
+                self.committed = True
+
+        raw = FakeConnection()
+        connection = object.__new__(server._PgConnection)
+        connection._conn = raw
+
+        connection.commit()
+
+        self.assertTrue(raw.committed)
+
     def test_selected_offer_foreign_key_is_added_after_offers_table(self):
         schema = server.postgres_schema()
         task_table = schema.split("CREATE TABLE IF NOT EXISTS tasks (", 1)[1].split(");", 1)[0]
