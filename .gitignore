@@ -13,3 +13,7 @@ data/
 node_modules/
 mobile/www/
 .pnpm-store/
+*.jks
+*.keystore
+key.properties
+signing.properties
