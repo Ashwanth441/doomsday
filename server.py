@@ -210,7 +210,7 @@ def postgres_schema() -> str:
     schema = re.sub(r"\bBLOB\b", "BYTEA", schema)
     schema = re.sub(r"\bREAL\b", "DOUBLE PRECISION", schema)
     # PostgreSQL validates referenced tables immediately; offers are declared later.
-    schema = schema.replace("selected_offer_id INTEGER REFERENCES offers(id)", "selected_offer_id BIGINT")
+    schema = schema.replace("selected_offer_id BIGINT REFERENCES offers(id)", "selected_offer_id BIGINT")
     location_table = """
 CREATE TABLE IF NOT EXISTS task_locations (
   id BIGINT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
