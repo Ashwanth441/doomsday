@@ -597,6 +597,8 @@ def safe_json(value: Any) -> Any:
         return [safe_json(v) for v in value]
     if isinstance(value, dict):
         return {k: safe_json(v) for k, v in value.items()}
+    if isinstance(value, Decimal):
+        return float(value)
     return value
 
 
