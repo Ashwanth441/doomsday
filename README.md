@@ -1,6 +1,8 @@
 # Doomsday
 
-Doomsday is an installable, mobile-first task marketplace for an initial Tamil Nadu launch. It includes the web app, a same-origin JSON API, a normalized SQLite database, real Twilio Verify authentication, Razorpay Checkout and Route integration points, live in-app chat updates, push-notification support, and an admin area.
+Doomsday is an installable, mobile-first task marketplace built for users across India. It includes the web app, a same-origin JSON API, a normalized SQLite database, real Twilio Verify authentication, Razorpay Checkout and Route integration points, live in-app chat updates, push-notification support, and an admin area.
+
+There is no Tamil Nadu-only location restriction. Local task discovery works with GPS coordinates anywhere in India, or by the city entered in a user's profile when GPS is unavailable. Online student study-support tasks can be discovered by users nationwide.
 
 ## Run it locally
 
@@ -43,7 +45,7 @@ The default database is `data/doomsday.sqlite3`; set `DOOMSDAY_DB_PATH` to place
 
 The Render Blueprint currently uses the Free plan for a demo. Render Free services have an ephemeral filesystem, so this app's SQLite database and uploaded files can disappear whenever the service sleeps, restarts, or redeploys. Use test accounts and sample data only. Before inviting real users, move to a paid service with persistent storage or migrate the app to a durable managed database.
 
-SQLite is suitable for a small single-instance launch. For multiple application instances or nationwide growth, migrate this schema and its state transitions to PostgreSQL with PostGIS, move images to private object storage, and use a shared event/push queue. Keep the API's server-side ownership and payment checks in place during that migration.
+The app supports locations throughout India, but this demo deployment is still a small single-instance service. Before inviting a large nationwide audience, migrate this schema and its state transitions to PostgreSQL with PostGIS, move images to private object storage, and use a shared event/push queue. Keep the API's server-side ownership and payment checks in place during that migration.
 
 ## Safety and operations
 

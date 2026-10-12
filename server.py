@@ -436,7 +436,7 @@ def init_db() -> None:
                 "ON CONFLICT(slug) DO UPDATE SET name=excluded.name,name_ta=excluded.name_ta,icon=excluded.icon,sort_order=excluded.sort_order",
                 (slug, name, name_ta, icon, order),
             )
-        defaults = {"commission_percent": "10", "commission_min_paise": "0", "commission_max_paise": "100000", "promo_percent": "", "promo_code": "", "launch_city": "Chennai", "platform_paused": "false"}
+        defaults = {"commission_percent": "10", "commission_min_paise": "0", "commission_max_paise": "100000", "promo_percent": "", "promo_code": "", "platform_paused": "false"}
         for key, value in defaults.items():
             conn.execute("INSERT OR IGNORE INTO app_settings(key,value,updated_at) VALUES(?,?,?)", (key, value, now_iso()))
 
@@ -764,7 +764,7 @@ if push_ready():
 
 def publish_to_nearby(conn: sqlite3.Connection, lat: float, lng: float, city: str, task_id: str, title: str, digital: bool = False) -> None:
     if digital:
-        candidates=conn.execute("SELECT id FROM users WHERE suspended=0 AND lower(city)=lower(?)",(city,)).fetchall()
+        candidates=conn.execute("SELECT id FROM users WHERE suspended=0").fetchall()
         for candidate in candidates:
             notify(conn,candidate["id"],"nearby_task","New online study task",f"{title} is available as an online task.",task_id)
         return
@@ -1082,7 +1082,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config":
             key = os.environ.get("RAZORPAY_KEY_ID", "")
             settings=get_settings(conn)
-            self.send_json(200, {"app_name": APP_NAME,"auth_ready": auth_provider_ready(),"payments_ready": payment_provider_ready(),"razorpay_key_id": key,"push_ready": push_ready(),"vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),"launch_city": settings.get("launch_city", "Chennai"),"platform_paused":settings.get("platform_paused")=="true","locale_default":"en"})
+            self.send_json(200, {"app_name": APP_NAME,"auth_ready": auth_provider_ready(),"payments_ready": payment_provider_ready(),"razorpay_key_id": key,"push_ready": push_ready(),"vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),"platform_paused":settings.get("platform_paused")=="true","locale_default":"en"})
             return
         if path == "/api/categories":
             rows = conn.execute("SELECT slug,name,name_ta,icon FROM categories WHERE active=1 ORDER BY sort_order").fetchall()
@@ -1263,8 +1263,11 @@ class Handler(BaseHTTPRequestHandler):
             where.append("(t.delivery_mode='DIGITAL' OR (t.id IN (SELECT id FROM task_locations WHERE min_lat<=? AND max_lat>=? AND min_lng<=? AND max_lng>=?) AND distance_km(?,?,t.lat,t.lng)<=?))")
             values.extend([lat+lat_delta,lat-lat_delta,lng+lon_delta,lng-lon_delta,lat,lng,radius])
         else:
-            where.append("(t.delivery_mode='DIGITAL' OR lower(t.city)=lower(?))")
-            values.append(user["city"] or get_settings(conn).get("launch_city","Chennai"))
+            if user["city"]:
+                where.append("(t.delivery_mode='DIGITAL' OR lower(t.city)=lower(?))")
+                values.append(user["city"])
+            else:
+                where.append("t.delivery_mode='DIGITAL'")
         sort=val("sort","distance" if lat is not None else "newest")
         order="t.created_at DESC"
         if sort=="budget": order="t.budget_max_paise ASC,t.created_at DESC"
@@ -1429,6 +1432,7 @@ class Handler(BaseHTTPRequestHandler):
             skills=payload.get("skills",json.loads(user["skills"]))
             is_student=payload.get("is_student",bool(user["is_student"])) in (True,1,"1","true","on")
             if not name: raise ApiError(400,"name_required","Add your name to finish setting up your profile.")
+            if not city: raise ApiError(400,"city_required","Add your city so we can show tasks near you.")
             if email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+",email): raise ApiError(400,"invalid_email","Enter a valid email address.")
             if not isinstance(languages,list) or len(languages)>10 or any(not isinstance(x,str) or len(x)>40 for x in languages): raise ApiError(400,"invalid_languages","Choose up to 10 languages.")
             if not isinstance(skills,list) or len(skills)>20 or any(not isinstance(x,str) or len(x)>60 for x in skills): raise ApiError(400,"invalid_skills","Choose up to 20 skills.")
@@ -1520,8 +1524,9 @@ class Handler(BaseHTTPRequestHandler):
         if is_digital and not ack: raise ApiError(400,"study_support_ack_required","Confirm this is for tutoring or study support, not work to submit as your own.")
         address=str(payload.get("address","")).strip()[:400]
         landmark=str(payload.get("landmark","")).strip()[:160]
-        city=str(payload.get("city",user["city"] or "Chennai")).strip()[:80] or "Chennai"
+        city=str(payload.get("city",user["city"])).strip()[:80]
         if is_digital:
+            city=city or "Online"
             address="Online task"
             landmark=""
             if payload.get("lat") is not None and payload.get("lng") is not None:
@@ -1529,8 +1534,9 @@ class Handler(BaseHTTPRequestHandler):
             elif user["lat"] is not None and user["lng"] is not None:
                 lat,lng=float(user["lat"]),float(user["lng"])
             else:
-                lat,lng=13.0827,80.2707
+                lat,lng=22.5937,78.9629
         else:
+            if not city: raise ApiError(400,"city_required","Add the task city so people nearby can find it.")
             if len(address)<4: raise ApiError(400,"address_required","Add the task address. Only the selected tasker will see it.")
             lat,lng=validate_coordinates(payload.get("lat"),payload.get("lng"))
         time_mode=str(payload.get("time_mode","ASAP"))
@@ -2001,7 +2007,7 @@ class Handler(BaseHTTPRequestHandler):
                     if target: notify(conn,target,"dispute_update","Dispute updated",resolution,dispute["task_public_id"])
             return {"status":status,"message":"Dispute updated."},200
         if method=="PATCH" and path=="/api/admin/settings":
-            editable={"commission_percent","commission_min_paise","commission_max_paise","promo_percent","promo_code","launch_city","platform_paused"}
+            editable={"commission_percent","commission_min_paise","commission_max_paise","promo_percent","promo_code","platform_paused"}
             for key,value in payload.items():
                 if key not in editable: continue
                 if key in ("commission_percent","promo_percent"):
