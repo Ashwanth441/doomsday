@@ -21,6 +21,15 @@ import server  # noqa: E402
 
 
 class PostgreSQLSchemaTests(unittest.TestCase):
+    def test_postgres_cursor_supports_row_iteration(self):
+        class FakeCursor:
+            def __iter__(self):
+                return iter(["first", "second"])
+
+        cursor = server._PgCursor(FakeCursor())
+
+        self.assertEqual(list(cursor), ["first", "second"])
+
     def test_postgres_connection_exposes_commit_for_rate_limiter(self):
         class FakeConnection:
             committed = False
