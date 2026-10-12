@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Doomsday API and installable mobile web app server.
 
-Python 3.12+, SQLite (FTS5 + R*Tree), and no runtime framework dependency.
+Python 3.12+, SQLite by default or managed PostgreSQL via DATABASE_URL.
 Run behind an HTTPS reverse proxy in production. Secrets are read from the
 environment or a local .env file and never sent to the browser.
 """
@@ -28,11 +28,16 @@ import urllib.request
 import uuid
 import zipfile
 from http.cookies import SimpleCookie
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+try:
+    import psycopg
+except ImportError:  # SQLite remains the zero-setup local development default.
+    psycopg = None
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
@@ -98,13 +103,88 @@ DB_PATH = Path(os.environ.get("DOOMSDAY_DB_PATH", ROOT / "data" / "doomsday.sqli
 PORT = int(os.environ.get("PORT", "8787"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "30"))
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+
+DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,) + ((psycopg.IntegrityError,) if psycopg else ())
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def db() -> sqlite3.Connection:
+class _PgRow(dict):
+    """Dictionary row that also supports SQLite's positional row access."""
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return tuple(self.values())[key]
+        return super().__getitem__(key)
+
+
+def _pg_row_factory(cursor, row):
+    return _PgRow((column.name, value.tobytes() if isinstance(value, memoryview) else value) for column, value in zip(cursor.description, row))
+
+
+class _PgCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+
+class _PgConnection:
+    """Small psycopg wrapper for the app's existing DB-API query style."""
+    def __init__(self, url: str):
+        if psycopg is None:
+            raise RuntimeError("DATABASE_URL is set but psycopg is not installed.")
+        self._conn = psycopg.connect(url, row_factory=_pg_row_factory, connect_timeout=10)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            if exc_type is None:
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+        finally:
+            self._conn.close()
+
+    def execute(self, query: str, params=()):
+        statement = query.strip()
+        if statement.upper() == "BEGIN IMMEDIATE":
+            # SQLite serializes these short payment/assignment critical sections.
+            # A transaction-scoped advisory lock preserves that behavior in Postgres.
+            return _PgCursor(self._conn.execute("SELECT pg_advisory_xact_lock(%s)", (748392105,)))
+        ignore = bool(re.match(r"(?is)^INSERT\s+OR\s+IGNORE\s+INTO\b", statement))
+        if ignore:
+            statement = re.sub(r"(?is)^INSERT\s+OR\s+IGNORE\s+INTO\b", "INSERT INTO", statement, count=1)
+            if not re.search(r"(?is)\bON\s+CONFLICT\b", statement):
+                statement += " ON CONFLICT DO NOTHING"
+        statement = statement.replace("?", "%s")
+        return _PgCursor(self._conn.execute(statement, tuple(params or ())))
+
+    def executescript(self, script: str):
+        for statement in script.split(";"):
+            if statement.strip():
+                self._conn.execute(statement)
+
+
+def using_postgres() -> bool:
+    return bool(DATABASE_URL)
+
+
+def db():
+    if using_postgres():
+        return _PgConnection(DATABASE_URL)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=20, isolation_level="DEFERRED")
     conn.row_factory = sqlite3.Row
@@ -113,6 +193,52 @@ def db() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.create_function("distance_km", 4, lambda lat1, lng1, lat2, lng2: haversine_km(lat1, lng1, lat2, lng2), deterministic=True)
     return conn
+
+
+def postgres_schema() -> str:
+    """Translate the shared schema to PostgreSQL and add its location index table."""
+    schema = SCHEMA
+    schema = re.sub(r"(?is)CREATE\s+VIRTUAL\s+TABLE\s+IF\s+NOT\s+EXISTS\s+task_locations\s+USING\s+rtree\([^;]+;", "", schema)
+    schema = re.sub(r"(?is)CREATE\s+TRIGGER\s+IF\s+NOT\s+EXISTS\s+task_locations_(?:insert|update|delete)\b.*?END\s*;", "", schema)
+    schema = re.sub(r"(?is)CREATE\s+VIRTUAL\s+TABLE\s+IF\s+NOT\s+EXISTS\s+task_search\s+USING\s+fts5\([^;]+;", "", schema)
+    schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
+    schema = re.sub(r"\bINTEGER\b", "BIGINT", schema)
+    schema = re.sub(r"\bBLOB\b", "BYTEA", schema)
+    schema = re.sub(r"\bREAL\b", "DOUBLE PRECISION", schema)
+    # PostgreSQL validates referenced tables immediately; offers are declared later.
+    schema = schema.replace("selected_offer_id INTEGER REFERENCES offers(id)", "selected_offer_id BIGINT")
+    location_table = """
+CREATE TABLE IF NOT EXISTS task_locations (
+  id BIGINT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+  min_lng DOUBLE PRECISION NOT NULL,
+  max_lng DOUBLE PRECISION NOT NULL,
+  min_lat DOUBLE PRECISION NOT NULL,
+  max_lat DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS task_locations_bounds_idx ON task_locations(min_lat,max_lat,min_lng,max_lng);
+"""
+    return schema.replace("CREATE TABLE IF NOT EXISTS task_images (", location_table + "\nCREATE TABLE IF NOT EXISTS task_images (")
+
+
+POSTGRES_DISTANCE_FUNCTION = """
+CREATE OR REPLACE FUNCTION distance_km(lat1 DOUBLE PRECISION, lng1 DOUBLE PRECISION, lat2 DOUBLE PRECISION, lng2 DOUBLE PRECISION)
+RETURNS DOUBLE PRECISION LANGUAGE SQL IMMUTABLE STRICT AS $$
+  SELECT 6371.0088 * 2 * ASIN(SQRT(
+    LEAST(1.0,GREATEST(0.0,
+      POWER(SIN(RADIANS(lat2-lat1)/2),2) +
+      COS(RADIANS(lat1))*COS(RADIANS(lat2))*POWER(SIN(RADIANS(lng2-lng1)/2),2)
+    ))
+  ))
+$$
+"""
+
+POSTGRES_SELECTED_OFFER_FK = """
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tasks_selected_offer_id_fkey') THEN
+    ALTER TABLE tasks ADD CONSTRAINT tasks_selected_offer_id_fkey FOREIGN KEY (selected_offer_id) REFERENCES offers(id);
+  END IF;
+END $$
+"""
 
 
 SCHEMA = """
@@ -416,20 +542,25 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 
 def init_db() -> None:
     with db() as conn:
-        conn.executescript(SCHEMA)
-        # Additive migrations keep existing local accounts and tasks intact.
-        task_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}
-        if "delivery_mode" not in task_columns:
-            conn.execute("ALTER TABLE tasks ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT 'LOCAL' CHECK(delivery_mode IN ('LOCAL','DIGITAL'))")
-        if "integrity_acknowledged" not in task_columns:
-            conn.execute("ALTER TABLE tasks ADD COLUMN integrity_acknowledged INTEGER NOT NULL DEFAULT 0")
-        user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
-        if "is_student" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN is_student INTEGER NOT NULL DEFAULT 0")
-        message_columns = {row["name"] for row in conn.execute("PRAGMA table_info(messages)")}
-        for column, declaration in (("attachment_name", "TEXT"), ("attachment_mime", "TEXT"), ("attachment_data", "BLOB")):
-            if column not in message_columns:
-                conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {declaration}")
+        if using_postgres():
+            conn.executescript(postgres_schema())
+            conn.execute(POSTGRES_DISTANCE_FUNCTION)
+            conn.execute(POSTGRES_SELECTED_OFFER_FK)
+        else:
+            conn.executescript(SCHEMA)
+            # Additive migrations keep existing local accounts and tasks intact.
+            task_columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}
+            if "delivery_mode" not in task_columns:
+                conn.execute("ALTER TABLE tasks ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT 'LOCAL' CHECK(delivery_mode IN ('LOCAL','DIGITAL'))")
+            if "integrity_acknowledged" not in task_columns:
+                conn.execute("ALTER TABLE tasks ADD COLUMN integrity_acknowledged INTEGER NOT NULL DEFAULT 0")
+            user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+            if "is_student" not in user_columns:
+                conn.execute("ALTER TABLE users ADD COLUMN is_student INTEGER NOT NULL DEFAULT 0")
+            message_columns = {row["name"] for row in conn.execute("PRAGMA table_info(messages)")}
+            for column, declaration in (("attachment_name", "TEXT"), ("attachment_mime", "TEXT"), ("attachment_data", "BLOB")):
+                if column not in message_columns:
+                    conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {declaration}")
         for order, (slug, name, name_ta, icon) in enumerate(CATEGORY_SEEDS):
             conn.execute(
                 "INSERT INTO categories(slug,name,name_ta,icon,sort_order) VALUES(?,?,?,?,?) "
@@ -1010,7 +1141,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(status, result, extra_headers)
         except ApiError as exc:
             self.send_json(exc.status, {"error": {"code": exc.code, "message": exc.message}})
-        except sqlite3.IntegrityError as exc:
+        except DB_INTEGRITY_ERRORS as exc:
             text = str(exc).lower()
             if "unique" in text:
                 self.send_json(409, {"error": {"code": "already_exists", "message": "That action has already been completed."}})
@@ -1254,7 +1385,11 @@ class Handler(BaseHTTPRequestHandler):
         search=val("q").strip()
         if search:
             words=[w for w in re.findall(r"[\w\u0B80-\u0BFF]+",search) if w][:8]
-            if words:
+            if words and using_postgres():
+                for word in words:
+                    where.append("(t.title ILIKE ? OR t.description ILIKE ? OR c.name ILIKE ? OR t.city ILIKE ?)")
+                    values.extend([f"%{word}%"]*4)
+            elif words:
                 match=" AND ".join('"'+w.replace('"','')+'"*' for w in words)
                 where.append("t.id IN (SELECT rowid FROM task_search WHERE task_search MATCH ?)"); values.append(match)
         if lat is not None:
@@ -1558,10 +1693,13 @@ class Handler(BaseHTTPRequestHandler):
         checked=[clean_image(img) for img in images]
         if sum(len(image[1]) for image in checked)>3*MAX_IMAGE: raise ApiError(413,"images_too_large","The photos are too large together. Please choose fewer or smaller images.")
         created=now_iso(); public_id=str(uuid.uuid4())
-        cur=conn.execute("INSERT INTO tasks(public_id,customer_id,category_id,title,description,address,landmark,city,lat,lng,public_lat,public_lng,time_mode,scheduled_at,budget_mode,budget_min_paise,budget_max_paise,delivery_mode,integrity_acknowledged,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?)",(public_id,user["id"],category["id"],title,description,address,landmark,city,lat,lng,round(lat,2),round(lng,2),time_mode,scheduled,budget_mode,bmin,bmax,"DIGITAL" if is_digital else "LOCAL",1 if ack else 0,created,created))
-        task_db_id=cur.lastrowid
+        cur=conn.execute("INSERT INTO tasks(public_id,customer_id,category_id,title,description,address,landmark,city,lat,lng,public_lat,public_lng,time_mode,scheduled_at,budget_mode,budget_min_paise,budget_max_paise,delivery_mode,integrity_acknowledged,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?) RETURNING id",(public_id,user["id"],category["id"],title,description,address,landmark,city,lat,lng,round(lat,2),round(lng,2),time_mode,scheduled,budget_mode,bmin,bmax,"DIGITAL" if is_digital else "LOCAL",1 if ack else 0,created,created))
+        task_db_id=cur.fetchone()[0]
         cat_name=conn.execute("SELECT name FROM categories WHERE id=?",(category["id"],)).fetchone()[0]
-        conn.execute("INSERT INTO task_search(rowid,title,description,category) VALUES(?,?,?,?)",(task_db_id,title,description,cat_name+" "+city))
+        if using_postgres():
+            conn.execute("INSERT INTO task_locations(id,min_lng,max_lng,min_lat,max_lat) VALUES(?,?,?,?,?)",(task_db_id,lng,lng,lat,lat))
+        else:
+            conn.execute("INSERT INTO task_search(rowid,title,description,category) VALUES(?,?,?,?)",(task_db_id,title,description,cat_name+" "+city))
         for mime,data in checked:
             conn.execute("INSERT INTO task_images(id,task_id,owner_id,mime,data,created_at) VALUES(?,?,?,?,?,?)",(str(uuid.uuid4()),task_db_id,user["id"],mime,data,created))
         publish_to_nearby(conn,lat,lng,city,public_id,title,is_digital)
@@ -1839,10 +1977,10 @@ class Handler(BaseHTTPRequestHandler):
             attachment_name,attachment_mime,attachment_data=clean_upload(payload["attachment"])
         if not body and not image and not attachment_data: raise ApiError(400,"empty_message","Type a message or attach a photo or document.")
         created=now_iso()
-        cur=conn.execute("INSERT INTO messages(conversation_id,sender_id,body,image_mime,image_data,attachment_name,attachment_mime,attachment_data,created_at) VALUES(?,?,?,?,?,?,?,?,?)",(convo["id"],user["id"],body,mime,image,attachment_name,attachment_mime,attachment_data,created))
+        cur=conn.execute("INSERT INTO messages(conversation_id,sender_id,body,image_mime,image_data,attachment_name,attachment_mime,attachment_data,created_at) VALUES(?,?,?,?,?,?,?,?,?) RETURNING id",(convo["id"],user["id"],body,mime,image,attachment_name,attachment_mime,attachment_data,created))
         preview=body or (f"Sent {attachment_name}" if attachment_name else "Sent a photo")
         notify(conn,other,"new_message","New message",f"{user['name'] or 'Your task partner'}: {preview[:120]}",public_id)
-        return {"id":cur.lastrowid,"created_at":created,"message":"Message sent."}
+        return {"id":cur.fetchone()[0],"created_at":created,"message":"Message sent."}
 
     def message_image(self,conn:sqlite3.Connection,user:sqlite3.Row,message_id:int)->tuple[dict[str,Any],int]:
         row=conn.execute("SELECT m.image_data,m.image_mime,c.customer_id,c.tasker_id FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE m.id=?",(message_id,)).fetchone()
@@ -1889,9 +2027,10 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(evidence,list) or len(evidence)>5: raise ApiError(400,"invalid_evidence","Attach up to 5 evidence photos.")
         checked=[clean_image(v) for v in evidence]
         created=now_iso(); public_dispute=str(uuid.uuid4())
-        cur=conn.execute("INSERT INTO disputes(public_id,task_id,opened_by,reason,description,status,created_at,updated_at) VALUES(?,?,?,?,?,'OPEN',?,?)",(public_dispute,task["id"],user["id"],reason,description,created,created))
+        cur=conn.execute("INSERT INTO disputes(public_id,task_id,opened_by,reason,description,status,created_at,updated_at) VALUES(?,?,?,?,?,'OPEN',?,?) RETURNING id",(public_dispute,task["id"],user["id"],reason,description,created,created))
+        dispute_id=cur.fetchone()[0]
         for mime,data in checked:
-            conn.execute("INSERT INTO dispute_evidence(id,dispute_id,owner_id,mime,data,created_at) VALUES(?,?,?,?,?,?)",(str(uuid.uuid4()),cur.lastrowid,user["id"],mime,data,created))
+            conn.execute("INSERT INTO dispute_evidence(id,dispute_id,owner_id,mime,data,created_at) VALUES(?,?,?,?,?,?)",(str(uuid.uuid4()),dispute_id,user["id"],mime,data,created))
         conn.execute("UPDATE tasks SET status='DISPUTED',updated_at=? WHERE id=?",(created,task["id"]))
         other=task["assigned_tasker_id"] if user["id"]==task["customer_id"] else task["customer_id"]
         if other: notify(conn,other,"dispute_opened","A dispute was opened",f"A dispute has been opened for {task['title']}. Support will review it.",public_id)
@@ -1909,9 +2048,11 @@ class Handler(BaseHTTPRequestHandler):
         settings=get_settings(conn)
         total_value=conn.execute("SELECT COALESCE(SUM(amount_paise),0) FROM payments WHERE status IN ('paid','transfer_created','released')").fetchone()[0]
         revenue=conn.execute("SELECT COALESCE(SUM(fee_paise),0) FROM payments WHERE status IN ('paid','transfer_created','released')").fetchone()[0]
-        daily=conn.execute("SELECT substr(joined_at,1,10) day,COUNT(*) users FROM users WHERE joined_at >= datetime('now','-30 day') GROUP BY day ORDER BY day").fetchall()
-        recent=conn.execute("SELECT substr(created_at,1,10) day,COUNT(*) tasks FROM tasks WHERE created_at >= datetime('now','-30 day') GROUP BY day ORDER BY day").fetchall()
-        self.send_json(200,{"stats":{"total_users":count("SELECT COUNT(*) FROM users"),"active_users":count("SELECT COUNT(*) FROM users WHERE suspended=0"),"tasks_posted":count("SELECT COUNT(*) FROM tasks"),"tasks_completed":count("SELECT COUNT(*) FROM tasks WHERE status='PAYMENT_RELEASED'"),"tasks_cancelled":count("SELECT COUNT(*) FROM tasks WHERE status='CANCELLED'"),"transaction_value_paise":total_value,"platform_revenue_paise":revenue,"active_disputes":count("SELECT COUNT(*) FROM disputes WHERE status IN ('OPEN','UNDER_REVIEW')"),"new_users_30d":count("SELECT COUNT(*) FROM users WHERE joined_at >= datetime('now','-30 day')")},"users_growth":safe_json(daily),"tasks_growth":safe_json(recent),"settings":settings})
+        cutoff=(datetime.now(timezone.utc)-timedelta(days=30)).isoformat(timespec="seconds").replace("+00:00","Z")
+        daily=conn.execute("SELECT substr(joined_at,1,10) day,COUNT(*) users FROM users WHERE joined_at >= ? GROUP BY day ORDER BY day",(cutoff,)).fetchall()
+        recent=conn.execute("SELECT substr(created_at,1,10) day,COUNT(*) tasks FROM tasks WHERE created_at >= ? GROUP BY day ORDER BY day",(cutoff,)).fetchall()
+        new_users=conn.execute("SELECT COUNT(*) FROM users WHERE joined_at >= ?",(cutoff,)).fetchone()[0]
+        self.send_json(200,{"stats":{"total_users":count("SELECT COUNT(*) FROM users"),"active_users":count("SELECT COUNT(*) FROM users WHERE suspended=0"),"tasks_posted":count("SELECT COUNT(*) FROM tasks"),"tasks_completed":count("SELECT COUNT(*) FROM tasks WHERE status='PAYMENT_RELEASED'"),"tasks_cancelled":count("SELECT COUNT(*) FROM tasks WHERE status='CANCELLED'"),"transaction_value_paise":total_value,"platform_revenue_paise":revenue,"active_disputes":count("SELECT COUNT(*) FROM disputes WHERE status IN ('OPEN','UNDER_REVIEW')"),"new_users_30d":new_users},"users_growth":safe_json(daily),"tasks_growth":safe_json(recent),"settings":settings})
 
     def admin_write(self,conn:sqlite3.Connection,user:sqlite3.Row,method:str,path:str,payload:dict[str,Any])->tuple[Any,int]:
         require_admin(conn,user)
@@ -2058,7 +2199,7 @@ class Handler(BaseHTTPRequestHandler):
         if not secret or not signature or not hmac.compare_digest(expected,signature): raise ApiError(401,"webhook_signature_invalid","Webhook signature could not be verified.")
         if not event_id: event_id=hashlib.sha256(raw).hexdigest()
         try: conn.execute("INSERT INTO webhook_events(event_id,event_type,received_at) VALUES(?,?,?)",(event_id,str(payload.get("event","unknown")),now_iso()))
-        except sqlite3.IntegrityError: return
+        except DB_INTEGRITY_ERRORS: return
         event=payload.get("event"); data=payload.get("payload",{})
         if event=="payment.captured":
             entity=data.get("payment",{}).get("entity") or {}

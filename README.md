@@ -41,11 +41,13 @@ Chat supports one text message or one photo/document attachment per send. Suppor
 
 ## Database and files
 
-The default database is `data/doomsday.sqlite3`; set `DOOMSDAY_DB_PATH` to place it on a persistent volume. The schema uses foreign keys, transaction records, FTS5 search, and an R*Tree location index. Uploaded images are compressed in the browser, checked for image signatures and size on the server, then stored with their owning task or message. Exact task addresses and coordinates are returned only to the customer, assigned tasker, and admins; task discovery uses rounded coordinates.
+The default database is `data/doomsday.sqlite3`; set `DOOMSDAY_DB_PATH` to place it on a persistent volume. For a managed PostgreSQL database, set `DATABASE_URL`; the server creates its schema on startup and keeps SQLite as the local default. PostgreSQL mode uses indexed task location bounds and server-side distance calculations. Search uses PostgreSQL text matching. Uploaded images and documents are stored in the database, so they move with a database migration.
 
-The Render Blueprint currently uses the Free plan for a demo. Render Free services have an ephemeral filesystem, so this app's SQLite database and uploaded files can disappear whenever the service sleeps, restarts, or redeploys. Use test accounts and sample data only. Before inviting real users, move to a paid service with persistent storage or migrate the app to a durable managed database.
+The Render Blueprint currently uses the Free plan for a demo. Render Free services have an ephemeral filesystem, so this app's SQLite database and uploaded files can disappear whenever the service sleeps, restarts, or redeploys. A managed PostgreSQL database can keep data separate from that filesystem; Neon is one provider with a free tier, subject to its current limits and policies. Add its connection string as the Render `DATABASE_URL` secret, using the provider's pooled connection string where offered. Never paste that secret into source control or chat.
 
-The app supports locations throughout India, but this demo deployment is still a small single-instance service. Before inviting a large nationwide audience, migrate this schema and its state transitions to PostgreSQL with PostGIS, move images to private object storage, and use a shared event/push queue. Keep the API's server-side ownership and payment checks in place during that migration.
+**Existing data is not copied automatically.** Before setting `DATABASE_URL` on an already-used deployment, export and migrate its users, tasks, offers, messages, payments, and file uploads. The hosted SQLite file is separate from this checkout, so this code cannot safely copy it on its own. Keep the deployment on SQLite until a database export has been saved and the PostgreSQL import has been checked. When `DATABASE_URL` is first enabled, the server creates a new, empty PostgreSQL schema.
+
+The app supports locations throughout India, but this demo deployment is still a small single-instance service. Before inviting a large nationwide audience, move images to private object storage and use a shared event/push queue. Keep the API's server-side ownership and payment checks in place during that migration.
 
 ## Safety and operations
 
