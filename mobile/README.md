@@ -10,6 +10,17 @@ This project packages the existing Doomsday marketplace for iOS and Android with
 4. Run `pnpm run cap:sync` to package the latest app screens and sync Capacitor plugins.
 5. Run `pnpm run cap:android` to open Android Studio or `pnpm run cap:ios` to open Xcode.
 
+### Android Play upload signing
+
+The Android release bundle is unsigned unless all four signing values are supplied to Gradle. Keep the upload keystore and its passwords outside source control, back them up in a password manager, and use the same upload key for later updates. Set these environment variables in the local build environment before running `./gradlew bundleRelease` from `android/`:
+
+- `DOOMSDAY_UPLOAD_KEYSTORE`: absolute path to the upload `.jks` file
+- `DOOMSDAY_UPLOAD_STORE_PASSWORD`: keystore password
+- `DOOMSDAY_UPLOAD_KEY_ALIAS`: key alias
+- `DOOMSDAY_UPLOAD_KEY_PASSWORD`: key password
+
+The bundle is written to `android/app/build/outputs/bundle/release/app-release.aab`. Do not upload it until it has a verified upload-key signature and the final Android application ID has been chosen; `in.doomsday.marketplace` is still provisional.
+
 Capacitor 8 needs Node.js 22+, Android Studio 2025.2.1+ with an Android SDK, and Xcode 26+ on macOS for iOS builds. Android Studio/Xcode are needed to create signed store builds and test on devices.
 
 The default API is `https://doomsday-gm5k.onrender.com`. To build for another API host, set `DOOMSDAY_API_BASE` to its HTTPS origin before `pnpm run cap:sync`. The backend must allow these exact origins in `MOBILE_ALLOWED_ORIGINS`:

@@ -1,5 +1,20 @@
 apply plugin: 'com.android.application'
 
+def uploadSigning = [
+    keystore: System.getenv('DOOMSDAY_UPLOAD_KEYSTORE'),
+    storePassword: System.getenv('DOOMSDAY_UPLOAD_STORE_PASSWORD'),
+    keyAlias: System.getenv('DOOMSDAY_UPLOAD_KEY_ALIAS'),
+    keyPassword: System.getenv('DOOMSDAY_UPLOAD_KEY_PASSWORD')
+]
+def hasAnyUploadSigningValue = uploadSigning.values().any { it?.trim() }
+def hasCompleteUploadSigning = uploadSigning.values().every { it?.trim() }
+if (hasAnyUploadSigningValue && !hasCompleteUploadSigning) {
+    throw new GradleException('Set all four DOOMSDAY_UPLOAD_* variables to sign a release bundle.')
+}
+if (hasCompleteUploadSigning && !file(uploadSigning.keystore).isFile()) {
+    throw new GradleException('DOOMSDAY_UPLOAD_KEYSTORE must point to an existing upload keystore file.')
+}
+
 android {
     namespace = "in.doomsday.marketplace"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +31,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    if (hasCompleteUploadSigning) {
+        signingConfigs {
+            release {
+                storeFile file(uploadSigning.keystore)
+                storePassword uploadSigning.storePassword
+                keyAlias uploadSigning.keyAlias
+                keyPassword uploadSigning.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasCompleteUploadSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
