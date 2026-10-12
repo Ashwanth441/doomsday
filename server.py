@@ -662,11 +662,6 @@ def profile(conn: sqlite3.Connection, user_id: str, viewer_id: str | None = None
     return data
 
 
-# This table is intentionally separate so the account token is never exposed.
-with db() as _conn:
-    _conn.execute("CREATE TABLE IF NOT EXISTS user_payout_profiles(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,razorpay_linked_account_id TEXT UNIQUE,verified_by TEXT REFERENCES users(id),updated_at TEXT NOT NULL)")
-
-
 def get_settings(conn: sqlite3.Connection) -> dict[str, str]:
     return {row["key"]: row["value"] for row in conn.execute("SELECT key,value FROM app_settings")}
 
