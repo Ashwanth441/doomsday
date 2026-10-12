@@ -1275,7 +1275,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/inbox":
             if not user: raise ApiError(401,"sign_in_required","Sign in to see your messages.")
-            rows=conn.execute("SELECT c.task_id,t.public_id task_public_id,t.title task_title,t.status,CASE WHEN c.customer_id=? THEN c.tasker_id ELSE c.customer_id END other_id,CASE WHEN c.customer_id=? THEN other.name ELSE customer.name END other_name,CASE WHEN c.customer_id=? THEN (other.photo IS NOT NULL) ELSE (customer.photo IS NOT NULL) END other_has_photo,(SELECT m.body FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) last_message,(SELECT m.created_at FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) last_at,(SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id!=? AND m.read_at IS NULL) unread FROM conversations c JOIN tasks t ON t.id=c.task_id JOIN users other ON other.id=CASE WHEN c.customer_id=? THEN c.tasker_id ELSE c.customer_id END JOIN users customer ON customer.id=c.customer_id WHERE c.customer_id=? OR c.tasker_id=? ORDER BY COALESCE(last_at,c.created_at) DESC LIMIT 100",(uid,uid,uid,uid,uid,uid,uid)).fetchall()
+            rows=conn.execute(
+                "SELECT c.task_id,t.public_id task_public_id,t.title task_title,t.status,"
+                "CASE WHEN c.customer_id=? THEN c.tasker_id ELSE c.customer_id END other_id,"
+                "CASE WHEN c.customer_id=? THEN other.name ELSE customer.name END other_name,"
+                "CASE WHEN c.customer_id=? THEN (other.photo IS NOT NULL) ELSE (customer.photo IS NOT NULL) END other_has_photo,"
+                "(SELECT m.body FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) last_message,"
+                "(SELECT m.created_at FROM messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) last_at,"
+                "(SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.sender_id!=? AND m.read_at IS NULL) unread "
+                "FROM conversations c JOIN tasks t ON t.id=c.task_id "
+                "JOIN users other ON other.id=CASE WHEN c.customer_id=? THEN c.tasker_id ELSE c.customer_id END "
+                "JOIN users customer ON customer.id=c.customer_id WHERE c.customer_id=? OR c.tasker_id=? "
+                "ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.conversation_id=c.id "
+                "ORDER BY m.id DESC LIMIT 1),c.created_at) DESC LIMIT 100",
+                (uid,uid,uid,uid,uid,uid,uid),
+            ).fetchall()
             result=[]
             for r in rows:
                 item=safe_json(r); item["other_photo_url"]=f"/api/users/{r['other_id']}/photo" if r["other_has_photo"] else ""; item.pop("other_has_photo",None); result.append(item)
