@@ -13,6 +13,7 @@ import hmac
 import ipaddress
 import io
 import json
+import logging
 import math
 import mimetypes
 import os
@@ -50,6 +51,7 @@ MAX_IMAGE = 1024 * 1024
 MAX_DOCUMENT = 8 * 1024 * 1024
 MAX_IMAGES = 5
 APP_NAME = "Doomsday"
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 
 STATUSES = {
     "OPEN", "OFFER_RECEIVED", "ASSIGNED", "TASKER_ON_THE_WAY", "IN_PROGRESS",
@@ -1113,6 +1115,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             return
         except Exception:
+            logging.exception("Unhandled GET error for %s", path)
             self.send_json(500, {"error": {"code": "unexpected_error", "message": "Something went wrong. Please try again."}})
 
     def do_POST(self) -> None:
@@ -1152,6 +1155,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             return
         except Exception:
+            logging.exception("Unhandled %s error for %s", method, path)
             self.send_json(500, {"error": {"code": "unexpected_error", "message": "Something went wrong. Please try again."}})
 
     def static_file(self, path: str) -> None:
