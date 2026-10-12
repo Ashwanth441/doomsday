@@ -120,8 +120,12 @@ class _PgRow(dict):
         return super().__getitem__(key)
 
 
-def _pg_row_factory(cursor, row):
-    return _PgRow((column.name, value.tobytes() if isinstance(value, memoryview) else value) for column, value in zip(cursor.description, row))
+def _pg_row_factory(cursor):
+    columns = tuple(column.name for column in cursor.description)
+    return lambda row: _PgRow(
+        (name, value.tobytes() if isinstance(value, memoryview) else value)
+        for name, value in zip(columns, row)
+    )
 
 
 class _PgCursor:
