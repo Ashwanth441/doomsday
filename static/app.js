@@ -13,8 +13,89 @@
   Object.assign(ta,{study_support_title:"மாணவர் படிப்பு உதவி",study_support_notice:"பயிற்சி, கருத்து, பயிற்சி பொருட்கள் மற்றும் படிப்பு உதவிகளுக்குப் பயன்படுத்தவும். மதிப்பெண் பெறும் வேலையை வேறொருவர் செய்து உங்கள் வேலையாக சமர்ப்பிக்க வேண்டாம்.",study_ack_label:"இது கற்றல் உதவிக்காக; மதிப்பெண் பெறும் பணியை செய்து கொடுப்பதற்கல்ல என்பதை புரிந்துகொள்கிறேன்.",online_task:"ஆன்லைன் பணி",submit_study_file:"படிப்பு கோப்பை சமர்ப்பிக்கவும்",study_file_help:"அசல் கோப்பையும் வரையறுக்கப்பட்ட அல்லது watermark செய்யப்பட்ட PDF முன்னோட்டத்தையும் பதிவேற்றவும்; முழு அசல் உள்ளடக்கத்தை முன்னோட்டமாகப் பதிவேற்ற வேண்டாம். பணப் பரிமாற்றம் உறுதியான பின் அசல் கோப்பு திறக்கும்.",original_file:"அசல் கோப்பு",preview_pdf:"PDF முன்னோட்டம்",preview_submission:"சமர்ப்பித்ததைப் பாருங்கள்",preview_limit:"நேரடி பதிவிறக்கத்தைத் தடுக்கலாம்; ஆனால் திரைப்பிடிப்பு அல்லது நகலெடுப்பை முழுமையாகத் தடுக்க முடியாது.",pay_to_unlock:"அசல் கோப்பைப் பெற கட்டணம் செலுத்தவும்",download_original:"அசல் கோப்பைப் பதிவிறக்கு",waiting_submission:"தேர்ந்தெடுத்த பணியாளர் கோப்பைச் சமர்ப்பிக்க காத்திருக்கிறது.",submission_ready:"உங்கள் பணியாளர் கோப்பைச் சமர்ப்பித்துள்ளார்.",chat_attachment:"படம் அல்லது ஆவணம் இணைக்கவும்",attachment_help:"ஒரு கோப்பு · PDF, PowerPoint, Word, Excel, JPG, PNG அல்லது WebP · 8 MB வரை.",payout_pending:"கட்டணம் வெற்றி. பணப் பரிமாற்றம் நடக்கிறது; அது உறுதியாகும் வரை அசல் கோப்பு பூட்டப்படும்.",study_payment_title:"செலுத்தி அசல் கோப்பைத் திறக்கவும்",study_review_tip:"செலுத்துவதற்கு முன் PDF முன்னோட்டத்தைப் பாருங்கள். பணியாளருக்கு ஏற்றுக்கொண்ட சலுகைத் தொகை கிடைக்கும்; தளக் கட்டணம் checkout தொகையுடன் சேர்க்கப்படும். பரிமாற்ற நேரம் Razorpay-ஐப் பொறுத்தது.",file_download_locked:"கட்டணமும் பணப் பரிமாற்றத் தீர்வும் உறுதியான பின் அசல் கோப்பு திறக்கும்.",study_request:"சலுகை அனுப்பு",study_offer_received:"மாணவர் தேர்வுக்காக உங்கள் சலுகை காத்திருக்கிறது.",study_submit_done:"கோப்பு சமர்ப்பிக்கப்பட்டது. மாணவருக்கு அறிவிக்கப்பட்டது.",student_mode:"நான் தற்போது மாணவர்",student_mode_help:"மாணவர் கணக்குகளுக்கே படிப்பு உதவி பணிகள் கிடைக்கும். இது சுய அறிவிப்பு; Doomsday தற்போது மாணவர் அடையாளத்தைச் சரிபார்ப்பதில்லை.",chat_attachment_locked:"பணப் பரிமாற்றம் உறுதியான பின் பணியாளர் ஆவணங்கள் திறக்கும்."});
   const T = (key) => (state.lang === "ta" ? (ta[key] || en[key]) : en[key]) || key;
   const nativeApp = () => Boolean(window.DoomsdayNative?.isNativePlatform?.());
-  const state = { config:null, token:nativeApp()?"":(localStorage.getItem("doomsday_token")||""), user:null, categories:[], tab:"home", lang:localStorage.getItem("doomsday_lang")||"en", onboarding:false, otpPhone:"", otpStage:false, loading:false, filters:{q:"",category:"",radius:null,budget_min:"",budget_max:"",date:"",sort:"distance"}, tasks:[], page:1, hasMore:false, task:null, offers:[], unread:0, eventAbort:null, photoData:null, taskPhotos:[], adminSection:"overview", adminCache:{}, chatTaskId:null, chatPoll:null, longToast:null, reportUserId:null };
+  const state = { config:null, token:nativeApp()?"":(localStorage.getItem("doomsday_token")||""), user:null, categories:[], tab:"home", taskListMode:"posted", lang:localStorage.getItem("doomsday_lang")||"en", onboarding:false, otpPhone:"", otpStage:false, loading:false, filters:{q:"",category:"",radius:null,budget_min:"",budget_max:"",date:"",sort:"distance"}, tasks:[], page:1, hasMore:false, task:null, offers:[], unread:0, eventAbort:null, photoData:null, taskPhotos:[], adminSection:"overview", adminCache:{}, chatTaskId:null, chatPoll:null, longToast:null, reportUserId:null };
   const root = () => $("#app");
+  let mobileNavGesture = null;
+  let suppressMobileNavClickUntil = 0;
+  const clamp = (value,min,max) => Math.min(max,Math.max(min,value));
+  function navIndexForTab(tab){const normalized=tab==="post"?"home":tab==="work"?"tasks":tab;const index=NAV.findIndex(item=>item.id===normalized);return index<0?0:index;}
+  function setMobileNavPosition(nav,index,stretch=1,squash=1,glint=50,geometry=null){
+    const styles=geometry?null:getComputedStyle(nav),paddingLeft=geometry?.paddingLeft??(parseFloat(styles.paddingLeft)||0),paddingRight=geometry?.paddingRight??(parseFloat(styles.paddingRight)||0);
+    const cellWidth=geometry?.cellWidth??((nav.getBoundingClientRect().width-paddingLeft-paddingRight)/NAV.length);
+    const indicator=$(".mobile-nav-indicator",nav);if(indicator&&!geometry){indicator.style.left=`${paddingLeft}px`;indicator.style.width=`${cellWidth}px`;}
+    nav.style.setProperty("--liquid-x",`${cellWidth*index}px`);
+    nav.style.setProperty("--liquid-stretch",String(stretch));
+    nav.style.setProperty("--liquid-squash",String(squash));
+    nav.style.setProperty("--liquid-glint",`${glint}%`);
+  }
+  function updateMobileNavSelection(tab=state.tab,animate=true){
+    const nav=$(".mobile-nav");if(!nav||!window.matchMedia("(max-width: 760px)").matches)return;
+    const index=navIndexForTab(tab);
+    nav.classList.remove("is-dragging");
+    nav.querySelectorAll("button[data-action='nav']").forEach(button=>button.classList.toggle("active",button.dataset.value===NAV[index].id));
+    nav.dataset.activeIndex=String(index);
+    if(!animate)nav.classList.add("no-transition");
+    setMobileNavPosition(nav,index);
+    if(!animate)requestAnimationFrame(()=>nav.classList.remove("no-transition"));
+  }
+  function navigateToTab(tab){
+    state.tab=tab;
+    if(window.matchMedia("(max-width: 760px)").matches&&$(".mobile-nav")){
+      updateMobileNavSelection(tab,true);
+      const heading=$(".topbar-title");if(heading)heading.textContent=tab==="home"?`${greeting()}, ${state.user?.name?.split(" ")[0]||""}`:T(tab);
+      renderScreen();
+    }else render();
+  }
+  function beginMobileNavGesture(event){
+    const nav=event.target instanceof Element?event.target.closest(".mobile-nav"):null;
+    if(!nav||!event.target.closest(".mobile-nav button[data-action='nav']")||mobileNavGesture||event.isPrimary===false||(event.pointerType==="mouse"&&event.button!==0))return;
+    const activeIndex=Number(nav.dataset.activeIndex||0);
+    const rect=nav.getBoundingClientRect(),styles=getComputedStyle(nav),paddingLeft=parseFloat(styles.paddingLeft)||0,paddingRight=parseFloat(styles.paddingRight)||0;
+    const geometry={paddingLeft,paddingRight,cellWidth:(rect.width-paddingLeft-paddingRight)/NAV.length};
+    mobileNavGesture={nav,pointerId:event.pointerId,startX:event.clientX,lastPaintX:event.clientX,latestX:event.clientX,rectLeft:rect.left,...geometry,geometry,activeIndex,position:activeIndex,moved:false,frame:0};
+  }
+  function paintMobileNavGesture(gesture,clientX){
+    const deltaX=clientX-gesture.lastPaintX;
+    gesture.position=clamp((clientX-gesture.rectLeft-gesture.paddingLeft)/gesture.cellWidth-.5,0,NAV.length-1);
+    const stretch=clamp(1+Math.abs(deltaX)/Math.max(1,gesture.cellWidth)*1.15,1,1.24);
+    setMobileNavPosition(gesture.nav,gesture.position,stretch,1/Math.sqrt(stretch),deltaX>=0?72:28,gesture.geometry);
+    gesture.lastPaintX=clientX;
+  }
+  function moveMobileNavGesture(event){
+    const gesture=mobileNavGesture;if(!gesture||event.pointerId!==gesture.pointerId)return;
+    const deltaX=event.clientX-gesture.startX;
+    if(!gesture.moved&&Math.abs(deltaX)<8)return;
+    gesture.moved=true;gesture.nav.classList.add("is-dragging");
+    gesture.latestX=event.clientX;
+    if(!gesture.frame)gesture.frame=requestAnimationFrame(()=>{gesture.frame=0;if(mobileNavGesture===gesture)paintMobileNavGesture(gesture,gesture.latestX);});
+    event.preventDefault();
+  }
+  function finishMobileNavGesture(event){
+    const gesture=mobileNavGesture;if(!gesture||event.pointerId!==gesture.pointerId)return;
+    mobileNavGesture=null;
+    if(!gesture.moved&&Math.abs(event.clientX-gesture.startX)<8)return;
+    gesture.moved=true;
+    if(gesture.frame)cancelAnimationFrame(gesture.frame);
+    paintMobileNavGesture(gesture,event.clientX);
+    const index=clamp(Math.round(gesture.position),0,NAV.length-1);
+    const suppressUntil=Date.now()+320;suppressMobileNavClickUntil=suppressUntil;
+    setTimeout(()=>{if(suppressMobileNavClickUntil===suppressUntil)suppressMobileNavClickUntil=0;},330);
+    navigateToTab(NAV[index].id);
+  }
+  function cancelMobileNavGesture(event){
+    const gesture=mobileNavGesture;if(!gesture||event.pointerId!==gesture.pointerId)return;
+    mobileNavGesture=null;if(gesture.frame)cancelAnimationFrame(gesture.frame);
+    gesture.nav.classList.remove("is-dragging");setMobileNavPosition(gesture.nav,gesture.activeIndex,1,1,50,gesture.geometry);
+  }
+  document.addEventListener("pointerdown",beginMobileNavGesture);
+  document.addEventListener("pointermove",moveMobileNavGesture,{passive:false});
+  document.addEventListener("pointerup",finishMobileNavGesture);
+  document.addEventListener("pointercancel",cancelMobileNavGesture);
+  window.addEventListener("resize",()=>updateMobileNavSelection(state.tab,false));
+  document.addEventListener("click",event=>{
+    if(Date.now()>suppressMobileNavClickUntil||event.detail===0||!(event.target instanceof Element)||!event.target.closest(".mobile-nav"))return;
+    suppressMobileNavClickUntil=0;event.preventDefault();event.stopImmediatePropagation();
+  },true);
   const toast = (message) => { const el=$("#toast"); el.textContent=message; el.classList.add("show"); clearTimeout(state.longToast); state.longToast=setTimeout(()=>el.classList.remove("show"),3000); };
   const escapeHtml = (value) => String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
   const initials = (name="") => (name.trim().split(/\s+/).map(x=>x[0]).join("").slice(0,2)||"D").toUpperCase();
@@ -72,18 +153,26 @@
     try{response=await fetch(backendUrl(path),{...options,headers});}
     catch(_){throw new Error(T("no_internet"));}
     let data={};try{data=await response.json();}catch(_){ }
-    if(!response.ok){if(response.status===401&&state.token){void clearSessionToken();state.user=null;render();}throw new Error(data?.error?.message||T("generic_error"));}
+    if(!response.ok){if(response.status===401&&state.token){void clearSessionToken();state.user=null;render();}const error=new Error(data?.error?.message||T("generic_error"));error.status=response.status;throw error;}
     return data;
   }
   async function boot(){
-    try{if(nativeApp())state.token=await window.DoomsdayNative.getSessionToken();state.config=await api("/api/config");state.categories=(await api("/api/categories")).categories||[];
+    try{if(nativeApp())state.token=await window.DoomsdayNative.getSessionToken();
+      const [configResult,categoriesResult]=await Promise.allSettled([api("/api/config"),api("/api/categories")]);
+      state.config=configResult.status==="fulfilled"?configResult.value:{};state.categories=categoriesResult.status==="fulfilled"?(categoriesResult.value.categories||[]):[];
       if("serviceWorker" in navigator&&!nativeApp())navigator.serviceWorker.register("/sw.js").catch(()=>{});
-      if(state.token){try{state.user=(await api("/api/me")).user;state.unread=(await api("/api/notifications")).unread||0;connectEvents();}catch(_){await clearSessionToken();}}
+      if(state.token){const [profileResult,notificationsResult]=await Promise.allSettled([api("/api/me"),api("/api/notifications")]);
+        if(profileResult.status==="fulfilled")state.user=profileResult.value.user;
+        else if(profileResult.reason?.status===401)await clearSessionToken();
+        else throw profileResult.reason;
+        state.unread=notificationsResult.status==="fulfilled"?(notificationsResult.value.unread||0):0;
+        if(state.user)connectEvents();
+      }
       render();
       const deep=new URLSearchParams(location.search);if(deep.get("task"))openTask(deep.get("task"));if(deep.get("chat"))openChat(deep.get("chat"));
-    }catch(_){root().innerHTML=`<div class="onboarding-shell"><div class="empty-state"><div class="empty-illustration">🛠️</div><h3>${T("generic_error")}</h3><p>Refresh this page to reconnect.</p></div></div>`;}
+      }catch(_){root().innerHTML=`<div class="onboarding-shell"><div class="empty-state"><div class="empty-illustration">🛠️</div><h3>${T("generic_error")}</h3><p>Check your connection. The server may be waking up.</p><button class="btn btn-soft" data-action="reload-app">Try again</button></div></div>`;}
   }
-  function render(){if(!root())return;if(!state.user){renderAuth();return;}if(!state.user.name||state.onboarding){renderOnboarding();return;}root().innerHTML=renderApp();renderScreen();}
+  function render(){if(!root())return;if(!state.user){renderAuth();return;}if(!state.user.name||state.onboarding){renderOnboarding();return;}root().innerHTML=renderApp();updateMobileNavSelection(state.tab,false);renderScreen();}
   function renderAuth(){
     const configReady=state.config?.auth_ready;
     root().innerHTML=`<main class="auth-shell"><section class="auth-story"><div class="brand-line"><div class="brand-mark">d.</div><span>Doomsday</span></div><div class="eyebrow" style="margin-top:46px">${T("tn_launch")}</div><h1>${T("sign_title")}</h1><p>${T("sign_sub")}</p><div class="auth-benefits"><span><i class="benefit-dot">✓</i>${T("sign_benefit1")}</span><span><i class="benefit-dot">✓</i>${T("sign_benefit2")}</span><span><i class="benefit-dot">✓</i>${T("sign_benefit3")}</span></div></section><section class="auth-card"><h2>${state.otpStage?"Check your messages":"Get started"}</h2><p>${state.otpStage?`We sent a verification code to <strong>${escapeHtml(state.otpPhone)}</strong>.`:"Sign in with your phone to post a task or help someone nearby."}</p>${state.otpStage?`<form id="otp-form"><label class="field-label" for="otp-code">${T("code")}</label><input id="otp-code" name="code" class="input" autocomplete="one-time-code" inputmode="numeric" maxlength="10" placeholder="123456" required><button class="btn btn-primary btn-wide" type="submit">${T("verify")}</button><button class="text-button" type="button" data-action="otp-back">← ${T("back")}</button></form>`:`<form id="phone-form"><label class="field-label" for="phone-number">${T("phone")}</label><div class="phone-row"><span class="country-code">🇮🇳 +91</span><input id="phone-number" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="14" placeholder="98765 43210" required></div><p class="field-help">${T("secure_phone")}</p><button class="btn btn-primary btn-wide" type="submit" ${configReady?"":"disabled"}>${T("send_code")}</button></form>`}${!configReady?`<div class="error-box" style="margin-top:14px">${T("otp_missing")}</div>`:""}<p class="auth-foot">By continuing, you agree to follow our safety rules and use Doomsday responsibly. Never share an OTP with anyone.</p><div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button></div></section></main>`;
@@ -94,19 +183,18 @@
     const skillTags=["Delivery & Pickup","Cleaning","Moving & Lifting","Home Help","Repairs","Shopping & Errands","Vehicle Help","Pet Help","Elderly Assistance","Tutoring","Photography","Video Editing","Computer/Phone Help","Events","Gardening"];
     root().innerHTML=`<main class="onboarding-shell"><section class="onboarding-card"><div class="brand-line"><div class="brand-mark">d.</div><span>Doomsday</span><span class="verified-tag" style="margin-left:auto">✓ ${T("verified")}</span></div><div class="onboard-progress"><span style="width:${state.user.name?"100":"48"}%"></span></div><div class="eyebrow">${T("welcome")}</div><h1>${T("welcome_sub")}</h1><p class="sub">${T("service_ready")}</p><form id="profile-form"><label class="field-label">${T("name")}</label><input class="input" name="name" maxlength="80" placeholder="${T("name_placeholder")}" value="${escapeHtml(state.user.name||"")}" required><div class="form-grid"><div><label class="field-label">${T("city")}</label><input class="input" name="city" maxlength="80" value="${escapeHtml(state.user.city||"")}" placeholder="${T("city_placeholder")}" required></div><div><label class="field-label">${T("area")}</label><input class="input" name="area" maxlength="100" value="${escapeHtml(state.user.area||"")}" placeholder="${T("area_placeholder")}"></div></div><label class="field-label">${T("email")}</label><input class="input" name="email" type="email" maxlength="160" value="${escapeHtml(state.user.email||"")}" placeholder="you@example.com"><label class="field-label">${T("about")}</label><textarea class="textarea" name="about" maxlength="500" placeholder="${T("about_placeholder")}">${escapeHtml(state.user.about||"")}</textarea><label class="profile-row student-mode"><span><strong>${T("student_mode")}</strong><small>${T("student_mode_help")}</small></span><input type="checkbox" name="is_student" ${state.user.is_student?"checked":""}></label><label class="field-label">${T("languages")}</label><div class="chip-group">${["English","தமிழ்","हिन्दी"].map(x=>`<button type="button" class="chip-toggle ${languages.includes(x)?"selected":""}" data-action="toggle-language" data-value="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join("")}</div><label class="field-label">${T("skills")}</label><div class="chip-group">${skillTags.map(x=>`<button type="button" class="chip-toggle ${chosen.includes(x)?"selected":""}" data-action="toggle-skill" data-value="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join("")}</div><div class="form-grid"><div><label class="field-label">${T("service_radius")}</label><select class="select" name="service_radius_km">${[2,5,10,25,50].map(n=>`<option ${Number(state.user.service_radius_km)===n?"selected":""}>${n}</option>`).join("")}</select></div><div><label class="field-label">${T("profile_photo")}</label><label class="photo-picker" for="profile-photo" style="display:block;padding:12px;margin-top:5px">📷 ${T("choose_photos")}</label><input id="profile-photo" type="file" accept="image/*" hidden></div></div><div class="onboard-actions"><button type="button" class="btn btn-outline" data-action="sign-out">${T("sign_out")}</button><button type="submit" class="btn btn-primary">${T("finish")} →</button></div></form><p class="auth-foot">${T("identity_note")}</p></section></main>`;
   }
-  const NAV=[{id:"home",icon:"⌂"},{id:"post",icon:"＋"},{id:"tasks",icon:"▣"},{id:"work",icon:"↗"},{id:"messages",icon:"☏"},{id:"profile",icon:"◉"}];
+  const NAV=[{id:"home",icon:"⌂"},{id:"tasks",icon:"▣"},{id:"messages",icon:"☏"},{id:"profile",icon:"◉"}];
   function renderApp(){
     const name=state.user.name?.split(" ")[0]||"";
     const heading=state.tab==="home"?`${greeting()}, ${escapeHtml(name)}`:T(state.tab);
-    return `<div class="app-layout"><aside class="sidebar"><div class="brand-line"><div class="brand-mark">d.</div><span>Doomsday</span></div><nav class="side-nav">${NAV.map(n=>`<button class="nav-button ${state.tab===n.id?"active":""}" data-action="nav" data-value="${n.id}"><span class="nav-icon">${n.icon}</span>${T(n.id)}</button>`).join("")}${state.user.is_admin?`<button class="nav-button ${state.tab==="admin"?"active":""}" data-action="nav" data-value="admin"><span class="nav-icon">⚙</span>${T("admin")}</button>`:""}</nav><div class="side-bottom"><div class="side-note"><strong>${T("tn_launch")}</strong>Small, trusted help from the people around you.</div><div class="sidebar-user">${photoAvatar(state.user)}<div class="user-meta"><strong>${escapeHtml(state.user.name)}</strong><span>✓ ${T("verified")}</span></div><button class="icon-btn" aria-label="Profile" data-action="nav" data-value="profile">···</button></div></div></aside><section class="sidebar-content"><header class="topbar"><div class="mobile-brand"><span class="brand-mark">d.</span>Doomsday</div><div class="topbar-title">${heading}</div><div class="topbar-right"><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button><button class="icon-btn" aria-label="Notifications" data-action="notifications">♧${state.unread?`<i class="unread-dot"></i>`:""}</button></div></header><main class="content" id="main-content"></main></section></div><nav class="mobile-nav">${NAV.map(n=>`<button class="${state.tab===n.id?"active":""}" data-action="nav" data-value="${n.id}"><span class="nav-icon">${n.icon}</span>${T(n.id)}</button>`).join("")}</nav>`;
+    return `<div class="app-layout"><aside class="sidebar"><div class="brand-line"><div class="brand-mark">d.</div><span>Doomsday</span></div><nav class="side-nav">${NAV.map(n=>`<button class="nav-button ${state.tab===n.id?"active":""}" data-action="nav" data-value="${n.id}"><span class="nav-icon">${n.icon}</span>${T(n.id)}</button>`).join("")}${state.user.is_admin?`<button class="nav-button ${state.tab==="admin"?"active":""}" data-action="nav" data-value="admin"><span class="nav-icon">⚙</span>${T("admin")}</button>`:""}</nav><div class="side-bottom"><div class="side-note"><strong>${T("tn_launch")}</strong>Small, trusted help from the people around you.</div><div class="sidebar-user">${photoAvatar(state.user)}<div class="user-meta"><strong>${escapeHtml(state.user.name)}</strong><span>✓ ${T("verified")}</span></div><button class="icon-btn" aria-label="Profile" data-action="nav" data-value="profile">···</button></div></div></aside><section class="sidebar-content"><header class="topbar"><div class="mobile-brand"><span class="brand-mark">d.</span>Doomsday</div><div class="topbar-title">${heading}</div><div class="topbar-right"><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button><button class="icon-btn" aria-label="Notifications" data-action="notifications">♧${state.unread?`<i class="unread-dot"></i>`:""}</button></div></header><main class="content" id="main-content"></main></section></div><nav class="mobile-nav" aria-label="Main navigation"><span class="mobile-nav-indicator" aria-hidden="true"></span>${NAV.map(n=>`<button class="${state.tab===n.id?"active":""}" data-action="nav" data-value="${n.id}"><span class="nav-icon">${n.icon}</span>${T(n.id)}</button>`).join("")}</nav>`;
   }
   function greeting(){const h=new Date().getHours();return T(h<12?"good_morning":"good_evening");}
   async function renderScreen(){const target=$("#main-content");if(!target)return;target.innerHTML=`<div class="task-grid"><div class="skeleton"></div><div class="skeleton"></div></div>`;
     try{
       if(state.tab==="home"){await loadDiscover();target.innerHTML=renderDiscover();}
       else if(state.tab==="post"){target.innerHTML=renderPostForm();}
-      else if(state.tab==="tasks"){const data=await api("/api/my/tasks");target.innerHTML=renderTaskList(data.tasks||[],"customer");}
-      else if(state.tab==="work"){const data=await api("/api/my/work");target.innerHTML=renderTaskList(data.tasks||[],"tasker");}
+      else if(state.tab==="tasks"){const [posted,accepted]=await Promise.all([api("/api/my/tasks"),api("/api/my/work")]);target.innerHTML=renderMyTasks(posted.tasks||[],accepted.tasks||[]);}
       else if(state.tab==="messages"){const data=await api("/api/inbox");target.innerHTML=renderInbox(data.conversations||[]);}
       else if(state.tab==="profile"){target.innerHTML=renderProfile();api(`/api/profiles/${state.user.id}`).then(d=>{const slot=$("#profile-reviews");if(!slot)return;slot.innerHTML=renderReviews(d.profile.reviews||[]);}).catch(()=>{});}
       else if(state.tab==="admin"){await renderAdmin(target);}
@@ -132,10 +220,10 @@
     return `<article class="task-card" data-action="open-task" data-value="${escapeHtml(task.public_id)}"><div class="task-card-top"><div class="category-mark">${escapeHtml(task.category_icon||"✨")}</div><div class="task-budget">${price}</div></div><h3>${escapeHtml(task.title)}</h3><p class="desc">${escapeHtml(task.description)}</p><div class="task-meta"><span>⌖ ${task.is_digital?T("online_task"):task.distance_km!=null?`${task.distance_km} km ${T("distance_km")}`:escapeHtml(task.city||T("approx_location"))}</span><span>◷ ${escapeHtml(when)}</span></div><div class="task-bottom"><div class="avatar-line"><span class="mini-avatar">${escapeHtml(initials(task.customer_name))}</span>${escapeHtml(task.customer_name||T("customer"))} ${task.customer_rating?`· ★ ${Number(task.customer_rating).toFixed(1)}`:""}</div><span class="offer-count">${task.offer_count} ${T("offers")}</span></div></article>`;
   }
   function renderEmpty(icon,title,sub,action=""){return `<div class="empty-state"><div class="empty-illustration">${icon}</div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(sub)}</p>${action}</div>`;}
-  function renderTaskList(tasks,role){
-    const title=role==="customer"?T("tasks"):T("work");
-    const empty=role==="customer"?["🧺",T("no_tasks"),T("no_tasks_sub"),`<button class="btn btn-primary" data-action="nav" data-value="post">＋ ${T("new_task")}</button>`]:["🛵",T("no_work"),T("no_work_sub"),`<button class="btn btn-primary" data-action="nav" data-value="home">${T("home")}</button>`];
-    return `<div class="content-header"><div><div class="eyebrow">Doomsday</div><h1>${title}</h1><p>${role==="customer"?"Tasks you've posted and their progress.":"Tasks you've accepted and your next steps."}</p></div>${role==="customer"?`<button class="btn btn-primary" data-action="nav" data-value="post">＋ ${T("new_task")}</button>`:""}</div>${tasks.length?`<div class="task-list">${tasks.map(renderTaskRow).join("")}</div>`:renderEmpty(...empty)}`;
+  function renderMyTasks(posted,accepted){
+    const showingAccepted=state.taskListMode==="accepted",tasks=showingAccepted?accepted:posted;
+    const empty=showingAccepted?["🛵",T("no_work"),T("no_work_sub"),`<button class="btn btn-primary" data-action="nav" data-value="home">${T("home")}</button>`]:["🧺",T("no_tasks"),T("no_tasks_sub"),`<button class="btn btn-primary" data-action="nav" data-value="post">＋ ${T("new_task")}</button>`];
+    return `<div class="content-header"><div><div class="eyebrow">Doomsday</div><h1>${T("tasks")}</h1><p>See tasks you've posted and work you've accepted.</p></div><button class="btn btn-primary" data-action="nav" data-value="post">＋ ${T("new_task")}</button></div><div class="task-mode-switch" role="tablist" aria-label="Your tasks"><button class="task-mode-button ${showingAccepted?"":"active"}" role="tab" aria-selected="${!showingAccepted}" data-action="task-list-mode" data-value="posted">${T("tasks")} <span>${posted.length}</span></button><button class="task-mode-button ${showingAccepted?"active":""}" role="tab" aria-selected="${showingAccepted}" data-action="task-list-mode" data-value="accepted">${T("work")} <span>${accepted.length}</span></button></div>${tasks.length?`<div class="task-list">${tasks.map(renderTaskRow).join("")}</div>`:renderEmpty(...empty)}`;
   }
   function renderTaskRow(task){return `<article class="task-row-card" data-action="open-task" data-value="${escapeHtml(task.public_id)}"><div class="category-mark">${escapeHtml(task.category_icon||"✨")}</div><div class="task-row-main"><h3>${escapeHtml(task.title)}</h3><p>${escapeHtml(task.category_name)} · ${timeAgo(task.created_at)} · ${task.offer_count} ${T("offers")}</p></div><div class="task-row-end"><strong>${money(task.budget_min)}</strong><span class="pill ${task.status==="PAYMENT_RELEASED"?"green":task.status==="CANCELLED"?"red":""}">${statusText(task.status)}</span></div></article>`;}
   function renderInbox(items){
@@ -284,7 +372,9 @@
     const action=button.dataset.action,value=button.dataset.value;
     try{
       if(action==="toggle-lang"){state.lang=state.lang==="en"?"ta":"en";localStorage.setItem("doomsday_lang",state.lang);render();return;}
-      if(action==="nav"){state.tab=value;render();return;}
+      if(action==="nav"){navigateToTab(value);return;}
+      if(action==="task-list-mode"){state.taskListMode=value;await renderScreen();return;}
+      if(action==="reload-app"){window.location.reload();return;}
       if(action==="close-modal"){closeModal();return;}
       if(action==="backdrop"&&event.target===button){closeModal();return;}
       if(action==="otp-back"){state.otpStage=false;renderAuth();return;}
