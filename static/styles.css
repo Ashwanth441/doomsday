@@ -60,3 +60,15 @@ body{background:radial-gradient(ellipse at 76% -12%,rgba(255,255,255,.95),transp
 .task-mode-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;border:0;border-radius:10px;background:transparent;color:#666c64;font-size:12px;font-weight:800}
 .task-mode-button span{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(255,255,255,.58);font-size:10px}
 .task-mode-button.active{background:#fffefa;color:var(--tomato);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 2px 8px rgba(40,40,32,.07)}
+
+/* A short, lightweight entrance for the existing startup screen. */
+.boot-screen{position:relative;isolation:isolate;overflow:hidden}
+.boot-screen::before{content:"";position:absolute;z-index:-1;left:50%;top:calc(50% - 116px);width:210px;height:210px;border-radius:50%;background:radial-gradient(circle,rgba(230,86,61,.13),rgba(230,86,61,.04) 42%,transparent 72%);transform:translateX(-50%);animation:boot-glow 2.6s ease-in-out infinite alternate}
+.boot-screen>.brand-mark{animation:boot-mark-in .68s cubic-bezier(.2,1.35,.35,1) both;transform-origin:center}
+.boot-screen>.boot-copy{animation:boot-copy-in .48s ease-out .09s both}
+.boot-screen>.boot-spinner{animation:boot-spinner-in .35s ease-out .2s both,spin .9s linear .55s infinite}
+@keyframes boot-mark-in{0%{opacity:0;transform:translateY(13px) scale(.72) rotate(-8deg)}72%{opacity:1;transform:translateY(-2px) scale(1.07) rotate(1deg)}100%{opacity:1;transform:translateY(0) scale(1) rotate(0)}}
+@keyframes boot-copy-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes boot-spinner-in{from{opacity:0;transform:scale(.72)}to{opacity:1;transform:scale(1)}}
+@keyframes boot-glow{from{opacity:.55;scale:.92}to{opacity:1;scale:1.08}}
+@media(prefers-reduced-motion:reduce){.boot-screen::before,.boot-screen>.brand-mark,.boot-screen>.boot-copy,.boot-screen>.boot-spinner{animation:none!important}.boot-screen>.boot-spinner{opacity:.65}}
