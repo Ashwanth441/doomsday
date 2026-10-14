@@ -46,12 +46,13 @@ body{background:radial-gradient(ellipse at 76% -12%,rgba(255,255,255,.95),transp
 
 @media(max-width:760px){
   .mobile-nav{grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden;touch-action:pan-y;user-select:none;-webkit-user-select:none;contain:layout paint;backdrop-filter:saturate(150%) blur(15px);-webkit-backdrop-filter:saturate(150%) blur(15px)}
-  .mobile-nav-indicator{position:absolute;z-index:0;left:7px;top:7px;bottom:7px;width:calc((100% - 14px)/4);border:1px solid rgba(255,255,255,.9);border-radius:20px;background:linear-gradient(145deg,rgba(255,255,255,.72),rgba(255,255,255,.30) 55%,rgba(255,255,255,.52));box-shadow:inset 0 1px 1px rgba(255,255,255,.96),inset 0 -1px 0 rgba(255,255,255,.3),0 4px 13px rgba(47,48,39,.08);backdrop-filter:saturate(145%) blur(9px);-webkit-backdrop-filter:saturate(145%) blur(9px);transform:translate3d(var(--liquid-x,0px),0,0) scaleX(var(--liquid-stretch,1)) scaleY(var(--liquid-squash,1));transform-origin:center;transition:transform 460ms cubic-bezier(.2,1.28,.36,1);will-change:transform;pointer-events:none}
-  .mobile-nav-indicator::before{content:"";position:absolute;inset:1px;border-radius:inherit;background:radial-gradient(ellipse at var(--liquid-glint,50%) -18%,rgba(255,255,255,.98),transparent 66%),linear-gradient(120deg,rgba(255,255,255,.32),transparent 62%);pointer-events:none}
-  .mobile-nav-indicator::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.34),transparent 38%);box-shadow:inset 0 1px 0 rgba(255,255,255,.55);pointer-events:none}
+  .mobile-nav-indicator{position:absolute;z-index:0;left:7px;top:7px;bottom:7px;width:calc((100% - 14px)/4);border:1px solid rgba(255,255,255,.94);border-radius:calc(22px - var(--liquid-tail-left,0px)) calc(22px - var(--liquid-tail-right,0px)) calc(22px - var(--liquid-tail-right,0px)) calc(22px - var(--liquid-tail-left,0px));background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(255,255,255,.34) 52%,rgba(255,255,255,.58));box-shadow:inset 0 1px 1px rgba(255,255,255,.98),inset 0 -1px 0 rgba(255,255,255,.36),0 5px 16px rgba(47,48,39,.11);transform:translate3d(var(--liquid-x,0px),0,0) skewX(var(--liquid-skew,0deg)) scaleX(var(--liquid-stretch,1)) scaleY(var(--liquid-squash,1));transform-origin:center;transition:transform 460ms cubic-bezier(.2,1.28,.36,1),border-radius 110ms ease-out;will-change:transform,border-radius;pointer-events:none}
+  .mobile-nav-indicator::before{content:"";position:absolute;inset:1px;border-radius:inherit;background:radial-gradient(ellipse at var(--liquid-glint,50%) -12%,rgba(255,255,255,.98),transparent 57%),linear-gradient(120deg,rgba(255,255,255,.38),transparent 62%);pointer-events:none}
+  .mobile-nav-indicator::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.40),transparent 42%);box-shadow:inset 0 1px 0 rgba(255,255,255,.62);pointer-events:none}
   .mobile-nav button{position:relative;z-index:1;touch-action:pan-y}
   .mobile-nav button.active{background:transparent;box-shadow:none}
-  .mobile-nav.is-dragging .mobile-nav-indicator,.mobile-nav.no-transition .mobile-nav-indicator{transition:none}
+  .mobile-nav.is-dragging .mobile-nav-indicator{transition:none}
+  .mobile-nav.no-transition .mobile-nav-indicator{transition:none!important}
   .topbar{backdrop-filter:saturate(125%) blur(10px);-webkit-backdrop-filter:saturate(125%) blur(10px)}
   .task-card{backdrop-filter:none;-webkit-backdrop-filter:none}
 }
@@ -63,7 +64,7 @@ body{background:radial-gradient(ellipse at 76% -12%,rgba(255,255,255,.95),transp
 
 /* A short, lightweight entrance for the existing startup screen. */
 .boot-screen{position:relative;isolation:isolate;overflow:hidden}
-.boot-screen::before{content:"";position:absolute;z-index:-1;left:50%;top:calc(50% - 116px);width:210px;height:210px;border-radius:50%;background:radial-gradient(circle,rgba(230,86,61,.13),rgba(230,86,61,.04) 42%,transparent 72%);transform:translateX(-50%);animation:boot-glow 2.6s ease-in-out infinite alternate}
+.boot-screen::before{content:"";position:absolute;z-index:-1;left:50%;top:calc(50% - 116px);width:210px;height:210px;border-radius:50%;background:radial-gradient(circle,rgba(230,86,61,.13),rgba(230,86,61,.04) 42%,transparent 72%);transform:translateX(-50%);animation:boot-glow 1.1s ease-out both}
 .boot-screen>.brand-mark{animation:boot-mark-in .68s cubic-bezier(.2,1.35,.35,1) both;transform-origin:center}
 .boot-screen>.boot-copy{animation:boot-copy-in .48s ease-out .09s both}
 .boot-screen>.boot-spinner{animation:boot-spinner-in .35s ease-out .2s both,spin .9s linear .55s infinite}

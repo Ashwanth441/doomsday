@@ -19,7 +19,7 @@
   let suppressMobileNavClickUntil = 0;
   const clamp = (value,min,max) => Math.min(max,Math.max(min,value));
   function navIndexForTab(tab){const normalized=tab==="post"?"home":tab==="work"?"tasks":tab;const index=NAV.findIndex(item=>item.id===normalized);return index<0?0:index;}
-  function setMobileNavPosition(nav,index,stretch=1,squash=1,glint=50,geometry=null){
+  function setMobileNavPosition(nav,index,stretch=1,squash=1,glint=50,geometry=null,skew=0,leftTail=0,rightTail=0){
     const styles=geometry?null:getComputedStyle(nav),paddingLeft=geometry?.paddingLeft??(parseFloat(styles.paddingLeft)||0),paddingRight=geometry?.paddingRight??(parseFloat(styles.paddingRight)||0);
     const cellWidth=geometry?.cellWidth??((nav.getBoundingClientRect().width-paddingLeft-paddingRight)/NAV.length);
     const indicator=$(".mobile-nav-indicator",nav);if(indicator&&!geometry){indicator.style.left=`${paddingLeft}px`;indicator.style.width=`${cellWidth}px`;}
@@ -27,6 +27,9 @@
     nav.style.setProperty("--liquid-stretch",String(stretch));
     nav.style.setProperty("--liquid-squash",String(squash));
     nav.style.setProperty("--liquid-glint",`${glint}%`);
+    nav.style.setProperty("--liquid-skew",`${skew}deg`);
+    nav.style.setProperty("--liquid-tail-left",`${leftTail}px`);
+    nav.style.setProperty("--liquid-tail-right",`${rightTail}px`);
   }
   function updateMobileNavSelection(tab=state.tab,animate=true){
     const nav=$(".mobile-nav");if(!nav||!window.matchMedia("(max-width: 760px)").matches)return;
@@ -52,14 +55,23 @@
     const activeIndex=Number(nav.dataset.activeIndex||0);
     const rect=nav.getBoundingClientRect(),styles=getComputedStyle(nav),paddingLeft=parseFloat(styles.paddingLeft)||0,paddingRight=parseFloat(styles.paddingRight)||0;
     const geometry={paddingLeft,paddingRight,cellWidth:(rect.width-paddingLeft-paddingRight)/NAV.length};
-    mobileNavGesture={nav,pointerId:event.pointerId,startX:event.clientX,lastPaintX:event.clientX,latestX:event.clientX,rectLeft:rect.left,...geometry,geometry,activeIndex,position:activeIndex,moved:false,frame:0};
+    mobileNavGesture={nav,pointerId:event.pointerId,startX:event.clientX,lastPaintX:event.clientX,lastPaintAt:performance.now(),latestX:event.clientX,rectLeft:rect.left,...geometry,geometry,activeIndex,position:activeIndex,velocity:0,moved:false,frame:0};
   }
   function paintMobileNavGesture(gesture,clientX){
     const deltaX=clientX-gesture.lastPaintX;
+    const now=performance.now(),elapsed=Math.max(1,now-gesture.lastPaintAt);
+    const instantVelocity=clamp(deltaX/elapsed,-1.8,1.8);
+    gesture.velocity=gesture.velocity*.52+instantVelocity*.48;
     gesture.position=clamp((clientX-gesture.rectLeft-gesture.paddingLeft)/gesture.cellWidth-.5,0,NAV.length-1);
-    const stretch=clamp(1+Math.abs(deltaX)/Math.max(1,gesture.cellWidth)*1.15,1,1.24);
-    setMobileNavPosition(gesture.nav,gesture.position,stretch,1/Math.sqrt(stretch),deltaX>=0?72:28,gesture.geometry);
+    const speed=clamp(Math.abs(gesture.velocity)/1.15,0,1);
+    const stretch=1+speed*.19;
+    const squash=1-speed*.09;
+    const glint=clamp(50+gesture.velocity*23,25,75);
+    const skew=clamp(-gesture.velocity*2.1,-3.5,3.5);
+    const tail=speed*9;
+    setMobileNavPosition(gesture.nav,gesture.position,stretch,squash,glint,gesture.geometry,skew,gesture.velocity>0?tail:0,gesture.velocity<0?tail:0);
     gesture.lastPaintX=clientX;
+    gesture.lastPaintAt=now;
   }
   function moveMobileNavGesture(event){
     const gesture=mobileNavGesture;if(!gesture||event.pointerId!==gesture.pointerId)return;
