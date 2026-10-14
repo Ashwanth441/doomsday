@@ -39,6 +39,7 @@
     nav.dataset.activeIndex=String(index);
     if(!animate)nav.classList.add("no-transition");
     setMobileNavPosition(nav,index);
+    syncNativeGlassNavigation();
     if(!animate)requestAnimationFrame(()=>nav.classList.remove("no-transition"));
   }
   function navigateToTab(tab){
@@ -49,6 +50,27 @@
       renderScreen();
     }else render();
   }
+  function syncNativeGlassNavigation(){
+    const native=window.DoomsdayNative?.isNativePlatform?.()&&window.DoomsdayGlassNativeAvailable===true&&window.webkit?.messageHandlers?.doomsdayGlassNav;
+    const nav=$(".mobile-nav");
+    if(!native||!nav||!window.matchMedia("(max-width: 760px)").matches){
+      if(native)window.webkit.messageHandlers.doomsdayGlassNav.postMessage({visible:false});
+      document.documentElement.classList.remove("native-glass-nav");
+      return;
+    }
+    const buttons=$$("button[data-action='nav']",nav);
+    if(buttons.length!==NAV.length){window.webkit.messageHandlers.doomsdayGlassNav.postMessage({visible:false});return;}
+    document.documentElement.classList.add("native-glass-nav");
+    const frame=nav.getBoundingClientRect(),first=buttons[0].getBoundingClientRect();
+    window.webkit.messageHandlers.doomsdayGlassNav.postMessage({
+      visible:true,
+      viewportWidth:window.innerWidth,
+      frame:{x:frame.left,y:first.top-6,width:frame.width,height:first.height+12},
+      selected:navIndexForTab(state.tab),
+      tabs:buttons.map((button,index)=>({id:NAV[index].id,icon:$(".nav-icon",button)?.textContent||"",label:button.textContent.replace($(".nav-icon",button)?.textContent||"","").trim()}))
+    });
+  }
+  window.doomsdayNativeSelectTab=tab=>{if(NAV.some(item=>item.id===tab))navigateToTab(tab);};
   function beginMobileNavGesture(event){
     const nav=event.target instanceof Element?event.target.closest(".mobile-nav"):null;
     if(!nav||!event.target.closest(".mobile-nav button[data-action='nav']")||mobileNavGesture||event.isPrimary===false||(event.pointerType==="mouse"&&event.button!==0))return;
@@ -184,7 +206,7 @@
       const deep=new URLSearchParams(location.search);if(deep.get("task"))openTask(deep.get("task"));if(deep.get("chat"))openChat(deep.get("chat"));
       }catch(_){root().innerHTML=`<div class="onboarding-shell"><div class="empty-state"><div class="empty-illustration">🛠️</div><h3>${T("generic_error")}</h3><p>Check your connection. The server may be waking up.</p><button class="btn btn-soft" data-action="reload-app">Try again</button></div></div>`;}
   }
-  function render(){if(!root())return;if(!state.user){renderAuth();return;}if(!state.user.name||state.onboarding){renderOnboarding();return;}root().innerHTML=renderApp();updateMobileNavSelection(state.tab,false);renderScreen();}
+  function render(){if(!root())return;if(!state.user){document.documentElement.classList.remove("native-glass-nav");syncNativeGlassNavigation();renderAuth();return;}if(!state.user.name||state.onboarding){document.documentElement.classList.remove("native-glass-nav");syncNativeGlassNavigation();renderOnboarding();return;}root().innerHTML=renderApp();updateMobileNavSelection(state.tab,false);renderScreen();}
   function renderAuth(){
     const configReady=state.config?.auth_ready;
     root().innerHTML=`<main class="auth-shell"><section class="auth-story"><div class="brand-line"><div class="brand-mark">d.</div><span>Doomsday</span></div><div class="eyebrow" style="margin-top:46px">${T("tn_launch")}</div><h1>${T("sign_title")}</h1><p>${T("sign_sub")}</p><div class="auth-benefits"><span><i class="benefit-dot">✓</i>${T("sign_benefit1")}</span><span><i class="benefit-dot">✓</i>${T("sign_benefit2")}</span><span><i class="benefit-dot">✓</i>${T("sign_benefit3")}</span></div></section><section class="auth-card"><h2>${state.otpStage?"Check your messages":"Get started"}</h2><p>${state.otpStage?`We sent a verification code to <strong>${escapeHtml(state.otpPhone)}</strong>.`:"Sign in with your phone to post a task or help someone nearby."}</p>${state.otpStage?`<form id="otp-form"><label class="field-label" for="otp-code">${T("code")}</label><input id="otp-code" name="code" class="input" autocomplete="one-time-code" inputmode="numeric" maxlength="10" placeholder="123456" required><button class="btn btn-primary btn-wide" type="submit">${T("verify")}</button><button class="text-button" type="button" data-action="otp-back">← ${T("back")}</button></form>`:`<form id="phone-form"><label class="field-label" for="phone-number">${T("phone")}</label><div class="phone-row"><span class="country-code">🇮🇳 +91</span><input id="phone-number" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="14" placeholder="98765 43210" required></div><p class="field-help">${T("secure_phone")}</p><button class="btn btn-primary btn-wide" type="submit" ${configReady?"":"disabled"}>${T("send_code")}</button></form>`}${!configReady?`<div class="error-box" style="margin-top:14px">${T("otp_missing")}</div>`:""}<p class="auth-foot">By continuing, you agree to follow our safety rules and use Doomsday responsibly. Never share an OTP with anyone.</p><div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button></div></section></main>`;
