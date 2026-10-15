@@ -440,6 +440,15 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   subscription_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS native_push_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL CHECK(platform IN ('ios','android')),
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS native_push_user_idx ON native_push_tokens(user_id,platform);
 CREATE TABLE IF NOT EXISTS payments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   public_id TEXT NOT NULL UNIQUE,
@@ -784,6 +793,35 @@ def push_ready() -> bool:
     return all(os.environ.get(key) for key in ("VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"))
 
 
+def apns_ready() -> bool:
+    return all(os.environ.get(key) for key in ("APNS_TEAM_ID", "APNS_KEY_ID", "APNS_BUNDLE_ID")) and bool(os.environ.get("APNS_AUTH_KEY_BASE64") or os.environ.get("APNS_AUTH_KEY"))
+
+
+def fcm_service_account() -> dict[str, Any] | None:
+    raw = os.environ.get("FCM_SERVICE_ACCOUNT_JSON", "").strip()
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+        if all(value.get(key) for key in ("project_id", "client_email", "private_key")):
+            return value
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def fcm_ready() -> bool:
+    return fcm_service_account() is not None
+
+
+def native_push_ready(platform: str | None = None) -> bool:
+    if platform == "ios":
+        return apns_ready()
+    if platform == "android":
+        return fcm_ready()
+    return apns_ready() or fcm_ready()
+
+
 def twilio_request(phone: str, code: str | None = None) -> dict[str, Any]:
     service = os.environ["TWILIO_VERIFY_SERVICE_SID"]
     endpoint = f"https://verify.twilio.com/v2/Services/{urllib.parse.quote(service)}/"
@@ -841,6 +879,9 @@ def razorpay_request(path: str, payload: dict[str, Any] | list[tuple[str, str]] 
 
 
 _push_queue: queue.Queue[tuple[str,dict[str,str]]] = queue.Queue(maxsize=1000)
+_push_auth_lock = threading.Lock()
+_fcm_access_token: tuple[str, float] | None = None
+_apns_provider_token: tuple[str, float] | None = None
 
 
 def notify(conn: sqlite3.Connection, user_id: str, kind: str, title: str, body: str, task_id: str | None = None) -> None:
@@ -848,8 +889,8 @@ def notify(conn: sqlite3.Connection, user_id: str, kind: str, title: str, body: 
     conn.execute("INSERT INTO notifications(user_id,kind,title,body,task_id,created_at) VALUES(?,?,?,?,?,?)", (user_id,kind,title,body,task_id,created))
     publish(user_id, {"type": kind, "title": title, "body": body, "task_id": task_id, "created_at": created})
     suffix="chat" if kind=="new_message" else "task"
-    if push_ready():
-        try: _push_queue.put_nowait((user_id,{"title": title, "body": body, "url": f"/?{suffix}={task_id}" if task_id else "/"}))
+    if push_ready() or native_push_ready():
+        try: _push_queue.put_nowait((user_id,{"kind":kind,"title": title, "body": body, "task_id":task_id or "", "url": f"/?{suffix}={task_id}" if task_id else "/"}))
         except queue.Full: pass
 
 
@@ -869,22 +910,151 @@ def publish(user_id: str, event: dict[str, Any]) -> None:
 
 
 def push_user(user_id: str, event: dict[str, str]) -> None:
-    if not push_ready():
+    if push_ready():
+        try:
+            from pywebpush import WebPushException, webpush
+            with db() as conn:
+                subscriptions = conn.execute("SELECT endpoint,subscription_json FROM push_subscriptions WHERE user_id=?", (user_id,)).fetchall()
+            for sub in subscriptions:
+                try:
+                    webpush(json.loads(sub["subscription_json"]), json.dumps(event), vapid_private_key=os.environ["VAPID_PRIVATE_KEY"], vapid_claims={"sub": os.environ["VAPID_SUBJECT"]})
+                except WebPushException as exc:
+                    if getattr(getattr(exc, "response", None), "status_code", 0) in (404, 410):
+                        with db() as conn:
+                            conn.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (sub["endpoint"],))
+        except ImportError:
+            # Browser push is optional; in-app events remain active without it.
+            pass
+    if not native_push_ready():
         return
+    with db() as conn:
+        tokens = conn.execute("SELECT id,platform,token FROM native_push_tokens WHERE user_id=?", (user_id,)).fetchall()
+    for token in tokens:
+        if token["platform"] == "ios" and apns_ready():
+            send_apns(token["id"], token["token"], event)
+        elif token["platform"] == "android" and fcm_ready():
+            send_fcm(token["id"], token["token"], event)
+
+
+def _jwt_encode(claims: dict[str, Any], key: str, algorithm: str, headers: dict[str, str] | None = None) -> str:
     try:
-        from pywebpush import WebPushException, webpush
-        with db() as conn:
-            subscriptions = conn.execute("SELECT endpoint,subscription_json FROM push_subscriptions WHERE user_id=?", (user_id,)).fetchall()
-        for sub in subscriptions:
-            try:
-                webpush(json.loads(sub["subscription_json"]), json.dumps(event), vapid_private_key=os.environ["VAPID_PRIVATE_KEY"], vapid_claims={"sub": os.environ["VAPID_SUBJECT"]})
-            except WebPushException as exc:
-                if getattr(getattr(exc, "response", None), "status_code", 0) in (404, 410):
-                    with db() as conn:
-                        conn.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (sub["endpoint"],))
-    except ImportError:
-        # Push is an optional deployment extra; in-app SSE notifications remain active.
-        return
+        import jwt
+    except ImportError as exc:
+        raise RuntimeError("PyJWT is required for native push delivery") from exc
+    return str(jwt.encode(claims, key, algorithm=algorithm, headers=headers or {}))
+
+
+def _apns_key() -> str:
+    encoded = os.environ.get("APNS_AUTH_KEY_BASE64", "").strip()
+    if encoded:
+        try:
+            return base64.b64decode(re.sub(r"\s+", "", encoded), validate=True).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise RuntimeError("APNS_AUTH_KEY_BASE64 is not valid base64-encoded PEM") from exc
+    return os.environ.get("APNS_AUTH_KEY", "").replace("\\n", "\n")
+
+
+def _apns_token() -> str:
+    global _apns_provider_token
+    now = time.time()
+    with _push_auth_lock:
+        if _apns_provider_token and _apns_provider_token[1] > now + 120:
+            return _apns_provider_token[0]
+        token = _jwt_encode(
+            {"iss": os.environ["APNS_TEAM_ID"], "iat": int(now)},
+            _apns_key(), "ES256", {"kid": os.environ["APNS_KEY_ID"]},
+        )
+        _apns_provider_token = (token, now + 50 * 60)
+        return token
+
+
+def _fcm_token() -> tuple[str, str]:
+    global _fcm_access_token
+    now = time.time()
+    with _push_auth_lock:
+        if _fcm_access_token and _fcm_access_token[1] > now + 120:
+            account = fcm_service_account()
+            if account:
+                return _fcm_access_token[0], str(account["project_id"])
+        account = fcm_service_account()
+        if not account:
+            raise RuntimeError("FCM service account credentials are not configured")
+        issued = int(now)
+        assertion = _jwt_encode(
+            {"iss": account["client_email"], "scope": "https://www.googleapis.com/auth/firebase.messaging", "aud": "https://oauth2.googleapis.com/token", "iat": issued, "exp": issued + 3600},
+            account["private_key"], "RS256",
+        )
+        request = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=urllib.parse.urlencode({"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion}).encode(),
+            method="POST",
+        )
+        request.add_header("Content-Type", "application/x-www-form-urlencoded")
+        with urllib.request.urlopen(request, timeout=12) as response:
+            result = json.loads(response.read())
+        token = str(result["access_token"])
+        _fcm_access_token = (token, now + int(result.get("expires_in", 3600)))
+        return token, str(account["project_id"])
+
+
+def _delete_native_token(token_id: int) -> None:
+    with db() as conn:
+        conn.execute("DELETE FROM native_push_tokens WHERE id=?", (token_id,))
+
+
+def send_apns(token_id: int, device_token: str, event: dict[str, str]) -> None:
+    try:
+        environment = "api.sandbox.push.apple.com" if os.environ.get("APNS_USE_SANDBOX", "true").lower() == "true" else "api.push.apple.com"
+        payload = {
+            "aps": {"alert": {"title": event.get("title", APP_NAME), "body": event.get("body", "")}, "sound": "default"},
+            "task_id": event.get("task_id", ""), "url": event.get("url", "/"), "kind": event.get("kind", "update"),
+        }
+        request = urllib.request.Request(f"https://{environment}/3/device/{urllib.parse.quote(device_token, safe='')}", data=json.dumps(payload, separators=(",", ":")).encode(), method="POST")
+        request.add_header("authorization", f"bearer {_apns_token()}")
+        request.add_header("apns-topic", os.environ["APNS_BUNDLE_ID"])
+        request.add_header("apns-push-type", "alert")
+        request.add_header("apns-priority", "10")
+        with urllib.request.urlopen(request, timeout=12):
+            return
+    except urllib.error.HTTPError as exc:
+        reason = ""
+        try:
+            reason = str(json.loads(exc.read()).get("reason", ""))
+        except (ValueError, OSError):
+            pass
+        if exc.code == 410 or reason in ("BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"):
+            _delete_native_token(token_id)
+        else:
+            logging.warning("APNs delivery failed (HTTP %s, %s)", exc.code, reason or "provider error")
+    except (urllib.error.URLError, TimeoutError, RuntimeError, KeyError, ValueError) as exc:
+        logging.warning("APNs delivery unavailable: %s", type(exc).__name__)
+
+
+def send_fcm(token_id: int, device_token: str, event: dict[str, str]) -> None:
+    try:
+        access_token, project_id = _fcm_token()
+        data = {key: str(event.get(key, "")) for key in ("task_id", "url", "kind")}
+        request = urllib.request.Request(
+            f"https://fcm.googleapis.com/v1/projects/{urllib.parse.quote(project_id, safe='')}/messages:send",
+            data=json.dumps({"message": {"token": device_token, "notification": {"title": event.get("title", APP_NAME), "body": event.get("body", "")}, "data": data, "android": {"priority": "HIGH"}}}, separators=(",", ":")).encode(),
+            method="POST",
+        )
+        request.add_header("authorization", f"Bearer {access_token}")
+        request.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(request, timeout=12):
+            return
+    except urllib.error.HTTPError as exc:
+        try:
+            error = json.loads(exc.read()).get("error", {})
+            details = json.dumps(error)
+        except (ValueError, OSError):
+            details = ""
+        if exc.code == 404 or "UNREGISTERED" in details or "registration-token-not-registered" in details:
+            _delete_native_token(token_id)
+        else:
+            logging.warning("FCM delivery failed (HTTP %s)", exc.code)
+    except (urllib.error.URLError, TimeoutError, RuntimeError, KeyError, ValueError) as exc:
+        logging.warning("FCM delivery unavailable: %s", type(exc).__name__)
 
 
 def push_worker() -> None:
@@ -892,13 +1062,13 @@ def push_worker() -> None:
         user_id,event=_push_queue.get()
         try:
             push_user(user_id,event)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning("Push delivery failed: %s", type(exc).__name__)
         finally:
             _push_queue.task_done()
 
 
-if push_ready():
+if push_ready() or native_push_ready():
     threading.Thread(target=push_worker,daemon=True,name="doomsday-push").start()
 
 
@@ -1224,7 +1394,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config":
             key = os.environ.get("RAZORPAY_KEY_ID", "")
             settings=get_settings(conn)
-            self.send_json(200, {"app_name": APP_NAME,"auth_ready": auth_provider_ready(),"payments_ready": payment_provider_ready(),"razorpay_key_id": key,"push_ready": push_ready(),"vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),"platform_paused":settings.get("platform_paused")=="true","locale_default":"en"})
+            self.send_json(200, {"app_name": APP_NAME,"auth_ready": auth_provider_ready(),"payments_ready": payment_provider_ready(),"razorpay_key_id": key,"push_ready": push_ready(),"native_push_platforms":{"ios":apns_ready(),"android":fcm_ready()},"vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),"platform_paused":settings.get("platform_paused")=="true","locale_default":"en"})
             return
         if path == "/api/categories":
             rows = conn.execute("SELECT slug,name,name_ta,icon FROM categories WHERE active=1 ORDER BY sort_order").fetchall()
@@ -1613,6 +1783,23 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400,"invalid_subscription","The notification setup could not be completed. Please try again.")
             conn.execute("INSERT INTO push_subscriptions(user_id,endpoint,subscription_json,created_at) VALUES(?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,subscription_json=excluded.subscription_json",(uid,sub["endpoint"],json.dumps(sub),now_iso()))
             return {"enabled":True},200
+        if method=="POST" and path=="/api/push/native-token":
+            platform=str(payload.get("platform", "")).strip().lower()
+            token=str(payload.get("token", "")).strip()
+            if platform not in ("ios", "android") or not native_push_ready(platform):
+                raise ApiError(503,"native_push_not_configured","Phone notifications aren't configured for this device yet.")
+            if platform=="ios" and not re.fullmatch(r"[A-Fa-f0-9]{32,256}",token):
+                raise ApiError(400,"invalid_push_token","The device notification registration could not be saved. Please try again.")
+            if platform=="android" and (not 20<=len(token)<=4096 or any(ord(char)<33 or ord(char)>126 for char in token)):
+                raise ApiError(400,"invalid_push_token","The device notification registration could not be saved. Please try again.")
+            created=now_iso()
+            conn.execute("INSERT INTO native_push_tokens(user_id,platform,token,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id,platform=excluded.platform,updated_at=excluded.updated_at",(uid,platform,token,created,created))
+            return {"enabled":True},200
+        if method=="DELETE" and path=="/api/push/native-token":
+            token=str(payload.get("token", "")).strip()
+            if token:
+                conn.execute("DELETE FROM native_push_tokens WHERE user_id=? AND token=?",(uid,token))
+            return {"enabled":False},200
         if method=="POST" and path=="/api/tasks":
             if get_settings(conn).get("platform_paused")=="true": raise ApiError(503,"platform_paused","New task posts are paused for a short update.")
             return self.create_task(conn,user,payload),201

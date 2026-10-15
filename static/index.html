@@ -12,8 +12,24 @@
   <title>Doomsday — your neighbourhood, getting things done</title>
 </head>
 <body>
+  <div id="launch-splash" class="launch-splash" role="status" aria-label="Opening Doomsday">
+    <div class="launch-glow launch-glow-a" aria-hidden="true"></div>
+    <div class="launch-glow launch-glow-b" aria-hidden="true"></div>
+    <div class="launch-content">
+      <div class="launch-emblem" aria-hidden="true">
+        <span class="launch-orbit launch-orbit-outer"></span>
+        <span class="launch-orbit launch-orbit-inner"></span>
+        <span class="launch-spark launch-spark-a"></span>
+        <span class="launch-spark launch-spark-b"></span>
+        <span class="launch-mark">d.</span>
+      </div>
+      <div class="launch-wordmark">Doomsday<span>.</span></div>
+      <div class="launch-tagline">A little help, right around you.</div>
+      <div class="launch-progress" aria-hidden="true"><span></span></div>
+      <div class="launch-caption">MADE FOR YOUR NEIGHBOURHOOD</div>
+    </div>
+  </div>
   <div id="app" aria-live="polite">
-    <div class="boot-screen"><div class="brand-mark">d.</div><div class="boot-copy">Your neighbourhood,<br>getting things done.</div><div class="boot-spinner"></div></div>
   </div>
   <div id="toast" class="toast" role="status"></div>
   <div id="modal-root"></div>

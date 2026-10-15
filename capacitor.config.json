@@ -12,13 +12,16 @@
   },
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 1200,
+      "launchShowDuration": 450,
       "backgroundColor": "#f6f5f1",
       "showSpinner": false
     },
     "StatusBar": {
       "backgroundColor": "#f6f5f1",
       "style": "LIGHT"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "banner", "list"]
     }
   }
 }

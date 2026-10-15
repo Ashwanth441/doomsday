@@ -2,6 +2,7 @@ import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Geolocation } from "@capacitor/geolocation";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { Share } from "@capacitor/share";
 import { KeychainAccess, SecureStorage } from "@aparajita/capacitor-secure-storage";
 
@@ -10,6 +11,13 @@ const secureStoreReady = SecureStorage.setSynchronize(false)
 
 window.DoomsdayNative = Object.freeze({
   isNativePlatform: () => Capacitor.isNativePlatform(),
+  getPlatform: () => Capacitor.getPlatform(),
+  checkPushPermissions: () => PushNotifications.checkPermissions(),
+  requestPushPermissions: () => PushNotifications.requestPermissions(),
+  registerPush: () => PushNotifications.register(),
+  onPushToken: (callback) => PushNotifications.addListener("registration", callback),
+  onPushRegistrationError: (callback) => PushNotifications.addListener("registrationError", callback),
+  onPushAction: (callback) => PushNotifications.addListener("pushNotificationActionPerformed", callback),
   getSessionToken: async () => {
     await secureStoreReady;
     return (await SecureStorage.get("session_token")) || "";

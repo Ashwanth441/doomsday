@@ -51,13 +51,14 @@ private final class DoomsdayGlassBridgeViewController: CAPBridgeViewController, 
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
-        guard #available(iOS 26.0, *), let webView else { return }
+        guard #available(iOS 26.0, *) else { return }
         let bar = NativeGlassTabBar { [weak self] tab in
             guard ["home", "tasks", "messages", "profile"].contains(tab) else { return }
-            self?.webView?.evaluateJavaScript("window.doomsdayNativeSelectTab && window.doomsdayNativeSelectTab('\\(tab)')")
+            let script = "window.doomsdayNativeSelectTab && window.doomsdayNativeSelectTab('\(tab)');"
+            self?.webView?.evaluateJavaScript(script)
         }
         bar.isHidden = true
-        webView.addSubview(bar)
+        view.addSubview(bar)
         glassTabBar = bar
     }
 
@@ -72,8 +73,10 @@ private final class DoomsdayGlassBridgeViewController: CAPBridgeViewController, 
         guard payload["visible"] as? Bool == true,
               let viewportValue = payload["viewportWidth"] as? NSNumber, viewportValue.doubleValue > 0,
               let frameData = payload["frame"] as? [String: Any],
+              let itemFrameData = payload["itemFrames"] as? [[String: Any]],
               let tabs = payload["tabs"] as? [[String: String]],
-              let selected = payload["selected"] as? Int else {
+              let selected = payload["selected"] as? Int,
+              itemFrameData.count == tabs.count else {
             glassTabBar?.isHidden = true
             return
         }
@@ -82,29 +85,40 @@ private final class DoomsdayGlassBridgeViewController: CAPBridgeViewController, 
             guard let value = frameData[key] as? NSNumber else { return 0 }
             return CGFloat(value.doubleValue) * scale
         }
+        let webViewOrigin = webView.convert(CGPoint(x: coordinate("x"), y: 0), to: view)
+        let frameHeight = coordinate("height")
         let frame = CGRect(
-            x: coordinate("x"),
-            y: coordinate("y"),
+            x: webViewOrigin.x,
+            y: view.bounds.maxY - view.safeAreaInsets.bottom - 10 - frameHeight,
             width: coordinate("width"),
-            height: coordinate("height")
+            height: frameHeight
         )
+        let itemFrames = itemFrameData.map { data in
+            CGRect(
+                x: (data["x"] as? NSNumber).map { CGFloat($0.doubleValue) * scale } ?? 0,
+                y: (data["y"] as? NSNumber).map { CGFloat($0.doubleValue) * scale } ?? 0,
+                width: (data["width"] as? NSNumber).map { CGFloat($0.doubleValue) * scale } ?? 0,
+                height: (data["height"] as? NSNumber).map { CGFloat($0.doubleValue) * scale } ?? 0
+            )
+        }
         guard let nativeBar = glassTabBar as? NativeGlassTabBar else { return }
-        nativeBar.update(frame: frame, tabs: tabs, selectedIndex: selected)
+        nativeBar.update(frame: frame, tabs: tabs, itemFrames: itemFrames, selectedIndex: selected)
         nativeBar.isHidden = frame.width <= 0 || frame.height <= 0
     }
 }
 
 @available(iOS 26.0, *)
 private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
-    private let glassContainer = UIVisualEffectView(effect: UIGlassContainerEffect())
     private let backgroundGlass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let selectionGlass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private var items: [NativeGlassTabItem] = []
     private var tabs: [[String: String]] = []
+    private var itemFrames: [CGRect] = []
     private var selectedIndex = 0
     private var dragStartX: CGFloat = 0
     private var dragStartPosition: CGFloat = 0
     private var dragPosition: CGFloat = 0
+    private var dragVelocity: CGFloat = 0
     private let onSelect: (String) -> Void
 
     init(onSelect: @escaping (String) -> Void) {
@@ -113,19 +127,13 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
         isAccessibilityElement = false
         backgroundColor = .clear
 
-        if let glassEffect = glassContainer.effect as? UIGlassContainerEffect {
-            glassEffect.spacing = 18
-            glassContainer.effect = glassEffect
-        }
-        glassContainer.frame = bounds
-        glassContainer.backgroundColor = .clear
-        addSubview(glassContainer)
-
         backgroundGlass.isUserInteractionEnabled = false
         backgroundGlass.clipsToBounds = true
         backgroundGlass.layer.cornerCurve = .continuous
-        backgroundGlass.layer.cornerRadius = 23
-        glassContainer.contentView.addSubview(backgroundGlass)
+        backgroundGlass.layer.borderWidth = 0.8
+        backgroundGlass.layer.borderColor = UIColor.white.withAlphaComponent(0.92).cgColor
+        backgroundGlass.contentView.backgroundColor = UIColor.white.withAlphaComponent(0.28)
+        addSubview(backgroundGlass)
 
         if let glassEffect = selectionGlass.effect as? UIGlassEffect {
             glassEffect.isInteractive = true
@@ -134,10 +142,10 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
         selectionGlass.isUserInteractionEnabled = false
         selectionGlass.clipsToBounds = true
         selectionGlass.layer.cornerCurve = .continuous
-        selectionGlass.layer.cornerRadius = 18
-        selectionGlass.layer.borderWidth = 0.75
-        selectionGlass.layer.borderColor = UIColor.white.withAlphaComponent(0.8).cgColor
-        glassContainer.contentView.addSubview(selectionGlass)
+        selectionGlass.layer.cornerRadius = 16
+        selectionGlass.layer.borderWidth = 0.8
+        selectionGlass.layer.borderColor = UIColor.white.withAlphaComponent(0.92).cgColor
+        addSubview(selectionGlass)
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         pan.delegate = self
@@ -151,7 +159,7 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func update(frame: CGRect, tabs newTabs: [[String: String]], selectedIndex newSelected: Int) {
+    func update(frame: CGRect, tabs newTabs: [[String: String]], itemFrames newItemFrames: [CGRect], selectedIndex newSelected: Int) {
         let frameChanged = !self.frame.equalTo(frame)
         let oldIds = tabs.map { $0["id"] ?? "" }
         let newIds = newTabs.map { $0["id"] ?? "" }
@@ -159,12 +167,12 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
         let clampedSelection = max(0, min(newSelected, max(0, tabs.count - 1)))
         let selectionChanged = clampedSelection != selectedIndex
         selectedIndex = clampedSelection
+        itemFrames = newItemFrames
         let itemsChanged = oldIds != newIds || items.count != newTabs.count
         if itemsChanged {
             items.forEach { $0.removeFromSuperview() }
             items = newTabs.map { tab in
                 let item = NativeGlassTabItem()
-                item.translatesAutoresizingMaskIntoConstraints = false
                 item.configure(tab: tab)
                 item.addTarget(self, action: #selector(handleTap(_:)), for: .touchUpInside)
                 addSubview(item)
@@ -176,6 +184,7 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
         for (index, item) in items.enumerated() { item.setSelected(index == selectedIndex) }
         isHidden = false
         if !isTracking { self.frame = frame }
+        setNeedsLayout()
         if selectionChanged {
             applySelection(selectedIndex, animated: true)
         } else if frameChanged || itemsChanged {
@@ -186,26 +195,45 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        glassContainer.frame = bounds
         backgroundGlass.frame = bounds
-        let count = CGFloat(max(items.count, 1))
-        let width = bounds.width / count
+        backgroundGlass.layer.cornerRadius = bounds.height / 2
         for (index, item) in items.enumerated() {
-            item.frame = CGRect(x: CGFloat(index) * width, y: 1, width: width, height: bounds.height - 2)
+            item.frame = itemFrames.indices.contains(index) ? itemFrames[index] : .zero
             bringSubviewToFront(item)
         }
-        positionSelection(dragPosition, animated: false)
+        positionSelection(dragPosition, animated: false, velocity: isTracking ? dragVelocity : 0)
+        selectionGlass.layer.cornerRadius = selectionGlass.bounds.height / 2
     }
 
     private var isTracking = false
 
-    private func positionSelection(_ position: CGFloat, animated: Bool) {
-        guard !items.isEmpty else { return }
-        let width = bounds.width / CGFloat(items.count)
-        let target = CGRect(x: 4 + position * width, y: 4, width: max(0, width - 8), height: max(0, bounds.height - 8))
+    private func positionSelection(_ position: CGFloat, animated: Bool, velocity: CGFloat = 0) {
+        guard !items.isEmpty, itemFrames.count == items.count else { return }
+        let clamped = min(CGFloat(items.count - 1), max(0, position))
+        let lowerIndex = Int(clamped.rounded(.down))
+        let upperIndex = min(lowerIndex + 1, items.count - 1)
+        let fraction = clamped - CGFloat(lowerIndex)
+        let first = itemFrames[lowerIndex].insetBy(dx: 2, dy: 2)
+        let second = itemFrames[upperIndex].insetBy(dx: 2, dy: 2)
+        let base = CGRect(
+            x: first.minX + (second.minX - first.minX) * fraction,
+            y: first.minY + (second.minY - first.minY) * fraction,
+            width: first.width + (second.width - first.width) * fraction,
+            height: first.height + (second.height - first.height) * fraction
+        )
+        // Let the glass lag behind the finger and widen as it travels, like a soft lens.
+        let travel = min(0.86, abs(velocity) / 1_000 * 0.72)
+        let extraWidth = base.width * (0.08 + travel * 0.75)
+        let trailingOffset = velocity > 0 ? -base.width * travel * 0.13 : (velocity < 0 ? base.width * travel * 0.13 : 0)
+        let target = CGRect(
+            x: base.minX - extraWidth / 2 + trailingOffset,
+            y: base.minY - 1,
+            width: base.width + extraWidth,
+            height: base.height + 2
+        ).intersection(bounds.insetBy(dx: 2, dy: 2))
         let apply = { self.selectionGlass.frame = target }
         if animated {
-            UIView.animate(withDuration: 0.52, delay: 0, usingSpringWithDamping: 0.76, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
+            UIView.animate(withDuration: 0.48, delay: 0, usingSpringWithDamping: 0.56, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
         } else {
             apply()
         }
@@ -237,13 +265,14 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
         case .began:
             isTracking = true
             dragStartX = point.x
-            dragStartPosition = CGFloat(selectedIndex)
+            dragStartPosition = position(for: point.x)
             dragPosition = dragStartPosition
+            dragVelocity = 0
             if let glassEffect = selectionGlass.effect as? UIGlassEffect { glassEffect.isInteractive = true }
         case .changed:
-            let cellWidth = bounds.width / CGFloat(max(items.count, 1))
-            dragPosition = min(CGFloat(max(items.count - 1, 0)), max(0, dragStartPosition + (point.x - dragStartX) / cellWidth))
-            positionSelection(dragPosition, animated: false)
+            dragPosition = position(for: dragStartX + (point.x - dragStartX))
+            dragVelocity = pan.velocity(in: self).x
+            positionSelection(dragPosition, animated: false, velocity: dragVelocity)
             let nearest = Int(dragPosition.rounded())
             if tabs.indices.contains(nearest) {
                 selectedIndex = nearest
@@ -251,6 +280,7 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
             }
         case .ended, .cancelled, .failed:
             isTracking = false
+            dragVelocity = 0
             let index = min(max(Int(dragPosition.rounded()), 0), max(items.count - 1, 0))
             applySelection(index, animated: true)
             if tabs.indices.contains(index), let id = tabs[index]["id"] { onSelect(id) }
@@ -258,40 +288,52 @@ private final class NativeGlassTabBar: UIView, UIGestureRecognizerDelegate {
             break
         }
     }
+
+    private func position(for x: CGFloat) -> CGFloat {
+        guard itemFrames.count > 1 else { return 0 }
+        let centers = itemFrames.map(\.midX)
+        if x <= centers[0] { return 0 }
+        if x >= centers[centers.count - 1] { return CGFloat(centers.count - 1) }
+        for index in 0..<(centers.count - 1) where x <= centers[index + 1] {
+            let span = centers[index + 1] - centers[index]
+            let fraction = span > 0 ? (x - centers[index]) / span : 0
+            return CGFloat(index) + min(1, max(0, fraction))
+        }
+        return CGFloat(centers.count - 1)
+    }
 }
 
 @available(iOS 26.0, *)
 private final class NativeGlassTabItem: UIControl {
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
-    private let stack = UIStackView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        stack.axis = .vertical
-        stack.alignment = .center
-        stack.distribution = .fill
-        stack.spacing = 2
         iconView.contentMode = .scaleAspectFit
-        iconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-        titleLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        iconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         titleLabel.adjustsFontSizeToFitWidth = true
         titleLabel.minimumScaleFactor = 0.82
         titleLabel.lineBreakMode = .byTruncatingTail
-        stack.addArrangedSubview(iconView)
-        stack.addArrangedSubview(titleLabel)
-        stack.isUserInteractionEnabled = false
-        addSubview(stack)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 2),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2)
-        ])
+        titleLabel.textAlignment = .center
+        titleLabel.isUserInteractionEnabled = false
+        iconView.isUserInteractionEnabled = false
+        addSubview(iconView)
+        addSubview(titleLabel)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let iconSize: CGFloat = 22
+        let textHeight: CGFloat = 13
+        let contentHeight = iconSize + 2 + textHeight
+        let top = max(4, (bounds.height - contentHeight) / 2)
+        iconView.frame = CGRect(x: (bounds.width - iconSize) / 2, y: top, width: iconSize, height: iconSize)
+        titleLabel.frame = CGRect(x: 2, y: iconView.frame.maxY + 2, width: max(0, bounds.width - 4), height: textHeight)
+    }
 
     func configure(tab: [String: String]) {
         let symbols = ["home": "safari.fill", "tasks": "checklist", "messages": "bubble.left.and.bubble.right.fill", "profile": "person.crop.circle.fill"]
@@ -302,7 +344,9 @@ private final class NativeGlassTabItem: UIControl {
     }
 
     func setSelected(_ selected: Bool) {
-        let color = selected ? UIColor(red: 0.79, green: 0.28, blue: 0.19, alpha: 1) : UIColor.secondaryLabel.withAlphaComponent(0.82)
+        let color = selected
+            ? UIColor(red: 0.79, green: 0.28, blue: 0.19, alpha: 1)
+            : UIColor(red: 0.31, green: 0.33, blue: 0.31, alpha: 1)
         iconView.tintColor = color
         titleLabel.textColor = color
         accessibilityTraits = selected ? [.button, .selected] : .button

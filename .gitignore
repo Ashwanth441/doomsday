@@ -13,6 +13,7 @@ data/
 node_modules/
 mobile/www/
 .pnpm-store/
+android/.idea/
 *.jks
 *.keystore
 key.properties

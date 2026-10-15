@@ -1,3 +1,4 @@
 # Optional. In-app notifications work without this; install to send browser push.
 pywebpush>=2.0
 psycopg[binary]>=3.2
+PyJWT[crypto]>=2.10

@@ -1,4 +1,18 @@
 (() => {
+  const launchStartedAt = performance.now();
+  let launchSplashDismissed = false;
+  function dismissLaunchSplash(){
+    if(launchSplashDismissed)return;
+    launchSplashDismissed=true;
+    const splash=document.getElementById("launch-splash");
+    if(!splash)return;
+    const delay=Math.max(0,1050-(performance.now()-launchStartedAt));
+    setTimeout(()=>{
+      splash.classList.add("is-leaving");
+      splash.addEventListener("transitionend",()=>splash.remove(),{once:true});
+      setTimeout(()=>splash.remove(),520);
+    },delay);
+  }
   const $ = (selector, parent = document) => parent.querySelector(selector);
   const $$ = (selector, parent = document) => [...parent.querySelectorAll(selector)];
   const API_BASE = String(window.DOOMSDAY_CONFIG?.apiBase || "").replace(/\/$/, "");
@@ -13,7 +27,33 @@
   Object.assign(ta,{study_support_title:"மாணவர் படிப்பு உதவி",study_support_notice:"பயிற்சி, கருத்து, பயிற்சி பொருட்கள் மற்றும் படிப்பு உதவிகளுக்குப் பயன்படுத்தவும். மதிப்பெண் பெறும் வேலையை வேறொருவர் செய்து உங்கள் வேலையாக சமர்ப்பிக்க வேண்டாம்.",study_ack_label:"இது கற்றல் உதவிக்காக; மதிப்பெண் பெறும் பணியை செய்து கொடுப்பதற்கல்ல என்பதை புரிந்துகொள்கிறேன்.",online_task:"ஆன்லைன் பணி",submit_study_file:"படிப்பு கோப்பை சமர்ப்பிக்கவும்",study_file_help:"அசல் கோப்பையும் வரையறுக்கப்பட்ட அல்லது watermark செய்யப்பட்ட PDF முன்னோட்டத்தையும் பதிவேற்றவும்; முழு அசல் உள்ளடக்கத்தை முன்னோட்டமாகப் பதிவேற்ற வேண்டாம். பணப் பரிமாற்றம் உறுதியான பின் அசல் கோப்பு திறக்கும்.",original_file:"அசல் கோப்பு",preview_pdf:"PDF முன்னோட்டம்",preview_submission:"சமர்ப்பித்ததைப் பாருங்கள்",preview_limit:"நேரடி பதிவிறக்கத்தைத் தடுக்கலாம்; ஆனால் திரைப்பிடிப்பு அல்லது நகலெடுப்பை முழுமையாகத் தடுக்க முடியாது.",pay_to_unlock:"அசல் கோப்பைப் பெற கட்டணம் செலுத்தவும்",download_original:"அசல் கோப்பைப் பதிவிறக்கு",waiting_submission:"தேர்ந்தெடுத்த பணியாளர் கோப்பைச் சமர்ப்பிக்க காத்திருக்கிறது.",submission_ready:"உங்கள் பணியாளர் கோப்பைச் சமர்ப்பித்துள்ளார்.",chat_attachment:"படம் அல்லது ஆவணம் இணைக்கவும்",attachment_help:"ஒரு கோப்பு · PDF, PowerPoint, Word, Excel, JPG, PNG அல்லது WebP · 8 MB வரை.",payout_pending:"கட்டணம் வெற்றி. பணப் பரிமாற்றம் நடக்கிறது; அது உறுதியாகும் வரை அசல் கோப்பு பூட்டப்படும்.",study_payment_title:"செலுத்தி அசல் கோப்பைத் திறக்கவும்",study_review_tip:"செலுத்துவதற்கு முன் PDF முன்னோட்டத்தைப் பாருங்கள். பணியாளருக்கு ஏற்றுக்கொண்ட சலுகைத் தொகை கிடைக்கும்; தளக் கட்டணம் checkout தொகையுடன் சேர்க்கப்படும். பரிமாற்ற நேரம் Razorpay-ஐப் பொறுத்தது.",file_download_locked:"கட்டணமும் பணப் பரிமாற்றத் தீர்வும் உறுதியான பின் அசல் கோப்பு திறக்கும்.",study_request:"சலுகை அனுப்பு",study_offer_received:"மாணவர் தேர்வுக்காக உங்கள் சலுகை காத்திருக்கிறது.",study_submit_done:"கோப்பு சமர்ப்பிக்கப்பட்டது. மாணவருக்கு அறிவிக்கப்பட்டது.",student_mode:"நான் தற்போது மாணவர்",student_mode_help:"மாணவர் கணக்குகளுக்கே படிப்பு உதவி பணிகள் கிடைக்கும். இது சுய அறிவிப்பு; Doomsday தற்போது மாணவர் அடையாளத்தைச் சரிபார்ப்பதில்லை.",chat_attachment_locked:"பணப் பரிமாற்றம் உறுதியான பின் பணியாளர் ஆவணங்கள் திறக்கும்."});
   const T = (key) => (state.lang === "ta" ? (ta[key] || en[key]) : en[key]) || key;
   const nativeApp = () => Boolean(window.DoomsdayNative?.isNativePlatform?.());
-  const state = { config:null, token:nativeApp()?"":(localStorage.getItem("doomsday_token")||""), user:null, categories:[], tab:"home", taskListMode:"posted", lang:localStorage.getItem("doomsday_lang")||"en", onboarding:false, otpPhone:"", otpStage:false, loading:false, filters:{q:"",category:"",radius:null,budget_min:"",budget_max:"",date:"",sort:"distance"}, tasks:[], page:1, hasMore:false, task:null, offers:[], unread:0, eventAbort:null, photoData:null, taskPhotos:[], adminSection:"overview", adminCache:{}, chatTaskId:null, chatPoll:null, longToast:null, reportUserId:null };
+  const nativePushAvailable = () => Boolean(state.config?.native_push_platforms?.[window.DoomsdayNative?.getPlatform?.()]);
+  let nativePushToken = "";
+  let nativePushWaiter = null;
+  let nativePushListenersReady = false;
+  async function syncNativePushToken(){
+    if(!nativeApp()||!state.token||!nativePushToken||!nativePushAvailable())return false;
+    await api("/api/push/native-token",{method:"POST",body:{platform:window.DoomsdayNative.getPlatform(),token:nativePushToken}});
+    return true;
+  }
+  async function setupNativePushListeners(){
+    if(!nativeApp()||nativePushListenersReady)return;
+    nativePushListenersReady=true;
+    await window.DoomsdayNative.onPushToken(({value})=>{
+      nativePushToken=String(value||"");
+      if(nativePushWaiter){nativePushWaiter.resolve(nativePushToken);nativePushWaiter=null;}
+      if(state.token)syncNativePushToken().catch(()=>{});
+    });
+    await window.DoomsdayNative.onPushRegistrationError(error=>{
+      if(nativePushWaiter){nativePushWaiter.reject(new Error(error?.error||T("notifications_unavailable")));nativePushWaiter=null;}
+    });
+    await window.DoomsdayNative.onPushAction(({notification})=>{
+      const data=notification?.data||{},taskId=String(data.task_id||"");
+      if(!taskId)return;
+      if(data.kind==="new_message")openChat(taskId).catch(()=>{});else openTask(taskId).catch(()=>{});
+    });
+  }
+  const state = { config:null, token:nativeApp()?"":(localStorage.getItem("doomsday_token")||""), user:null, categories:[], tab:"home", taskListMode:"posted", lang:localStorage.getItem("doomsday_lang")||"en", onboarding:false, otpPhone:"", otpStage:false, loading:false, filters:{q:"",category:"",radius:null,budget_min:"",budget_max:"",date:"",sort:"distance"}, tasks:[], discoverCacheKey:"", page:1, hasMore:false, task:null, offers:[], unread:0, eventAbort:null, photoData:null, taskPhotos:[], adminSection:"overview", adminCache:{}, chatTaskId:null, chatPoll:null, longToast:null, reportUserId:null };
   const root = () => $("#app");
   let mobileNavGesture = null;
   let suppressMobileNavClickUntil = 0;
@@ -61,11 +101,13 @@
     const buttons=$$("button[data-action='nav']",nav);
     if(buttons.length!==NAV.length){window.webkit.messageHandlers.doomsdayGlassNav.postMessage({visible:false});return;}
     document.documentElement.classList.add("native-glass-nav");
-    const frame=nav.getBoundingClientRect(),first=buttons[0].getBoundingClientRect();
+    const frame=nav.getBoundingClientRect(),buttonFrames=buttons.map(button=>button.getBoundingClientRect());
+    const rowTop=Math.min(...buttonFrames.map(rect=>rect.top)),rowBottom=Math.max(...buttonFrames.map(rect=>rect.bottom));
     window.webkit.messageHandlers.doomsdayGlassNav.postMessage({
       visible:true,
       viewportWidth:window.innerWidth,
-      frame:{x:frame.left,y:first.top-6,width:frame.width,height:first.height+12},
+      frame:{x:frame.left,y:rowTop-7,width:frame.width,height:rowBottom-rowTop+14},
+      itemFrames:buttonFrames.map(rect=>({x:rect.left-frame.left,y:rect.top-(rowTop-7),width:rect.width,height:rect.height})),
       selected:navIndexForTab(state.tab),
       tabs:buttons.map((button,index)=>({id:NAV[index].id,icon:$(".nav-icon",button)?.textContent||"",label:button.textContent.replace($(".nav-icon",button)?.textContent||"","").trim()}))
     });
@@ -191,20 +233,29 @@
     return data;
   }
   async function boot(){
-    try{if(nativeApp())state.token=await window.DoomsdayNative.getSessionToken();
-      const [configResult,categoriesResult]=await Promise.allSettled([api("/api/config"),api("/api/categories")]);
+    try{if(nativeApp()){state.token=await window.DoomsdayNative.getSessionToken();await setupNativePushListeners();}
+      const requests=[api("/api/config"),api("/api/categories")];
+      if(state.token)requests.push(api("/api/me"),api("/api/notifications"));
+      const [configResult,categoriesResult,profileResult,notificationsResult]=await Promise.allSettled(requests);
       state.config=configResult.status==="fulfilled"?configResult.value:{};state.categories=categoriesResult.status==="fulfilled"?(categoriesResult.value.categories||[]):[];
       if("serviceWorker" in navigator&&!nativeApp())navigator.serviceWorker.register("/sw.js").catch(()=>{});
-      if(state.token){const [profileResult,notificationsResult]=await Promise.allSettled([api("/api/me"),api("/api/notifications")]);
+      if(state.token){
         if(profileResult.status==="fulfilled")state.user=profileResult.value.user;
         else if(profileResult.reason?.status===401)await clearSessionToken();
         else throw profileResult.reason;
         state.unread=notificationsResult.status==="fulfilled"?(notificationsResult.value.unread||0):0;
-        if(state.user)connectEvents();
+        if(state.user){connectEvents();if(nativeApp()&&nativePushAvailable())void registerNativePushIfAllowed();}
       }
       render();
+      dismissLaunchSplash();
       const deep=new URLSearchParams(location.search);if(deep.get("task"))openTask(deep.get("task"));if(deep.get("chat"))openChat(deep.get("chat"));
-      }catch(_){root().innerHTML=`<div class="onboarding-shell"><div class="empty-state"><div class="empty-illustration">🛠️</div><h3>${T("generic_error")}</h3><p>Check your connection. The server may be waking up.</p><button class="btn btn-soft" data-action="reload-app">Try again</button></div></div>`;}
+      }catch(_){root().innerHTML=`<div class="onboarding-shell"><div class="empty-state"><div class="empty-illustration">🛠️</div><h3>${T("generic_error")}</h3><p>Check your connection. The server may be waking up.</p><button class="btn btn-soft" data-action="reload-app">Try again</button></div></div>`;dismissLaunchSplash();}
+  }
+  async function registerNativePushIfAllowed(){
+    try{
+      const permission=await window.DoomsdayNative.checkPushPermissions();
+      if(permission.receive==="granted")await window.DoomsdayNative.registerPush();
+    }catch(_){ }
   }
   function render(){if(!root())return;if(!state.user){document.documentElement.classList.remove("native-glass-nav");syncNativeGlassNavigation();renderAuth();return;}if(!state.user.name||state.onboarding){document.documentElement.classList.remove("native-glass-nav");syncNativeGlassNavigation();renderOnboarding();return;}root().innerHTML=renderApp();updateMobileNavSelection(state.tab,false);renderScreen();}
   function renderAuth(){
@@ -224,7 +275,7 @@
     return `<div class="app-layout"><aside class="sidebar"><div class="brand-line"><div class="brand-mark">d.</div><span>Doomsday</span></div><nav class="side-nav">${NAV.map(n=>`<button class="nav-button ${state.tab===n.id?"active":""}" data-action="nav" data-value="${n.id}"><span class="nav-icon">${n.icon}</span>${T(n.id)}</button>`).join("")}${state.user.is_admin?`<button class="nav-button ${state.tab==="admin"?"active":""}" data-action="nav" data-value="admin"><span class="nav-icon">⚙</span>${T("admin")}</button>`:""}</nav><div class="side-bottom"><div class="side-note"><strong>${T("tn_launch")}</strong>Small, trusted help from the people around you.</div><div class="sidebar-user">${photoAvatar(state.user)}<div class="user-meta"><strong>${escapeHtml(state.user.name)}</strong><span>✓ ${T("verified")}</span></div><button class="icon-btn" aria-label="Profile" data-action="nav" data-value="profile">···</button></div></div></aside><section class="sidebar-content"><header class="topbar"><div class="mobile-brand"><span class="brand-mark">d.</span>Doomsday</div><div class="topbar-title">${heading}</div><div class="topbar-right"><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button><button class="icon-btn" aria-label="Notifications" data-action="notifications">♧${state.unread?`<i class="unread-dot"></i>`:""}</button></div></header><main class="content" id="main-content"></main></section></div><nav class="mobile-nav" aria-label="Main navigation"><span class="mobile-nav-indicator" aria-hidden="true"></span>${NAV.map(n=>`<button class="${state.tab===n.id?"active":""}" data-action="nav" data-value="${n.id}"><span class="nav-icon">${n.icon}</span>${T(n.id)}</button>`).join("")}</nav>`;
   }
   function greeting(){const h=new Date().getHours();return T(h<12?"good_morning":"good_evening");}
-  async function renderScreen(){const target=$("#main-content");if(!target)return;target.innerHTML=`<div class="task-grid"><div class="skeleton"></div><div class="skeleton"></div></div>`;
+  async function renderScreen(){const target=$("#main-content");if(!target)return;const cachedDiscover=state.tab==="home"&&state.tasks.length>0&&state.discoverCacheKey===discoverCacheKey();if(cachedDiscover)target.innerHTML=renderDiscover();else target.innerHTML=`<div class="task-grid"><div class="skeleton"></div><div class="skeleton"></div></div>`;
     try{
       if(state.tab==="home"){await loadDiscover();target.innerHTML=renderDiscover();}
       else if(state.tab==="post"){target.innerHTML=renderPostForm();}
@@ -232,15 +283,16 @@
       else if(state.tab==="messages"){const data=await api("/api/inbox");target.innerHTML=renderInbox(data.conversations||[]);}
       else if(state.tab==="profile"){target.innerHTML=renderProfile();api(`/api/profiles/${state.user.id}`).then(d=>{const slot=$("#profile-reviews");if(!slot)return;slot.innerHTML=renderReviews(d.profile.reviews||[]);}).catch(()=>{});}
       else if(state.tab==="admin"){await renderAdmin(target);}
-    }catch(err){target.innerHTML=`<div class="empty-state"><div class="empty-illustration">↻</div><h3>${T("generic_error")}</h3><p>${escapeHtml(err.message)}</p><button class="btn btn-soft" data-action="reload-screen">Try again</button></div>`;}
+    }catch(err){if(cachedDiscover){toast(err.message);return;}target.innerHTML=`<div class="empty-state"><div class="empty-illustration">↻</div><h3>${T("generic_error")}</h3><p>${escapeHtml(err.message)}</p><button class="btn btn-soft" data-action="reload-screen">Try again</button></div>`;}
   }
+  function discoverCacheKey(){const location=state.discoverLocation||(state.user.lat&&state.user.lng?{lat:state.user.lat,lng:state.user.lng}:null),f=state.filters;return JSON.stringify([location?.lat??null,location?.lng??null,f.radius||(location?state.user.service_radius_km:10)||10,f.q,f.category,f.budget_min,f.budget_max,f.date,f.sort||(location?"distance":"newest")]);}
   async function loadDiscover(append=false){
-    if(!append){state.page=1;state.tasks=[];}
+    if(!append)state.page=1;
     let location=state.discoverLocation;
     if(!location&&state.user.lat&&state.user.lng)location={lat:state.user.lat,lng:state.user.lng};
     const f=state.filters;const q=new URLSearchParams();if(location){q.set("lat",location.lat);q.set("lng",location.lng);q.set("radius",f.radius||state.user.service_radius_km||10);}else q.set("radius",f.radius||10);
     if(f.q)q.set("q",f.q);if(f.category)q.set("category",f.category);if(f.budget_min)q.set("budget_min",f.budget_min);if(f.budget_max)q.set("budget_max",f.budget_max);if(f.date)q.set("date",f.date);q.set("sort",f.sort|| (location?"distance":"newest"));q.set("page",String(state.page));q.set("limit","20");
-    const data=await api("/api/tasks?"+q.toString());state.tasks=append?[...state.tasks,...data.tasks]:data.tasks;state.hasMore=data.has_more;
+    const cacheKey=discoverCacheKey();const data=await api("/api/tasks?"+q.toString());state.tasks=append?[...state.tasks,...data.tasks]:data.tasks;state.hasMore=data.has_more;state.discoverCacheKey=cacheKey;
   }
   function categoryLabel(slug){const c=state.categories.find(x=>x.slug===slug);return c?(state.lang==="ta"?c.name_ta:c.name):slug||"";}
   function renderCategoryStrip(){return `<div class="category-scroll"><button class="category-chip ${!state.filters.category?"active":""}" data-action="category" data-value="">${T("all_categories")}</button>${state.categories.map(c=>`<button class="category-chip ${state.filters.category===c.slug?"active":""}" data-action="category" data-value="${escapeHtml(c.slug)}">${c.icon} ${escapeHtml(state.lang==="ta"?c.name_ta:c.name)}</button>`).join("")}</div>`;}
@@ -267,7 +319,8 @@
   async function openPublicProfile(id){try{const {profile:p}=await api(`/api/profiles/${encodeURIComponent(id)}`);modal(`<div class="modal-head"><div><div class="eyebrow">${T("tasker_profile")}</div><h2>${escapeHtml(p.name||T("tasker"))}</h2></div><button class="modal-close" data-action="close-modal">×</button></div><div class="profile-card">${photoAvatar({name:p.name,photo_url:p.photo_url})}<p>${escapeHtml([p.area,p.city].filter(Boolean).join(", ")||T("country_india"))}</p><div class="detail-actions"><span class="verified-tag">✓ ${p.phone_verified?T("verified_user"):T("phone")}</span>${p.identity_verified?`<span class="verified-tag">✓ ${T("identity_verified")}</span>`:""}</div><div class="profile-stats"><div class="stat-box"><strong>★ ${Number(p.rating||0).toFixed(1)}</strong><span>${p.rating_count||0} ${T("reviews")}</span></div><div class="stat-box"><strong>${p.completed_tasks||0}</strong><span>${T("completed_tasks")}</span></div></div><p>${escapeHtml(p.about||"")}</p><p class="field-help">${escapeHtml((p.languages||[]).join(", "))}</p><p class="field-help">${escapeHtml((p.skills||[]).join(", "))}</p><p class="field-help">${T("joined")} ${dateText(p.joined_at).split(",")[0]}</p></div><section class="profile-section"><h3>${T("reviews")}</h3>${renderReviews(p.reviews||[])}</section>`);}catch(err){toast(err.message||T("generic_error"));}}
   function renderProfile(){
     const user=state.user;
-    return `<div class="content-header"><div><div class="eyebrow">Doomsday</div><h1>${T("profile")}</h1><p>${T("settings_title")}</p></div></div><div class="profile-layout"><section class="profile-card">${photoAvatar(user)}<h2>${escapeHtml(user.name)}</h2><p>${escapeHtml([user.area,user.city].filter(Boolean).join(", ")||T("country_india"))}</p><span class="verified-tag">✓ ${T("verified_user")}</span><div class="profile-stats"><div class="stat-box"><strong>★ ${Number(user.rating||0).toFixed(1)}</strong><span>${user.rating_count||0} ${T("reviews")}</span></div><div class="stat-box"><strong>${user.completed_tasks||0}</strong><span>${T("completed_tasks")}</span></div></div><button class="btn btn-outline" style="width:100%" data-action="edit-profile">${T("save")}</button></section><div class="profile-detail"><section class="profile-section"><h3>${T("settings_title")}</h3><div class="profile-row"><span>${T("phone")}</span><strong>${escapeHtml(user.phone||"")} <span class="verified-tag" style="padding:4px 7px">✓</span></strong></div><div class="profile-row"><span>${T("email")}</span><strong>${escapeHtml(user.email||"Not added")}</strong></div><div class="profile-row"><span>${T("student_mode")}</span><strong>${user.is_student?"✓":"—"}</strong></div><div class="profile-row"><span>${T("languages")}</span><strong>${escapeHtml((user.languages||[]).join(", "))}</strong></div><div class="profile-row"><span>${T("skills")}</span><strong>${escapeHtml((user.skills||[]).join(", ")||"Not added")}</strong></div><div class="profile-row"><span>${T("service_radius")}</span><strong>${user.service_radius_km} km</strong></div><div class="profile-row"><span>${T("joined")}</span><strong>${dateText(user.joined_at).split(",")[0]}</strong></div><div class="profile-row"><span>${T("payout")}</span><strong>${user.payout_connected?`✓ ${T("verified_user")}`:T("payout_not_ready")}</strong></div><div class="profile-row"><span>${T("lang_prompt")}</span><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button></div></section><section class="profile-section"><h3>${T("reviews")}</h3><div id="profile-reviews">${T("loading")}</div></section><section class="profile-section"><h3>${T("enable_push")}</h3><p class="field-help">Get chat and task updates on this device.</p><button class="btn btn-soft" data-action="enable-push" ${state.config?.push_ready?"":"disabled"}>♧ ${T("enable_push")}</button>${!state.config?.push_ready?`<p class="field-help">${T("notifications_unavailable")}</p>`:""}</section>${state.user.is_admin?`<section class="profile-section"><h3>${T("admin")}</h3><button class="btn btn-dark" data-action="nav" data-value="admin">⚙ ${T("open_admin")}</button></section>`:""}<section class="profile-section"><button class="btn btn-danger" data-action="sign-out">${T("sign_out")}</button></section></div></div>`;
+    const canEnablePush=nativeApp()?nativePushAvailable():Boolean(state.config?.push_ready);
+    return `<div class="content-header"><div><div class="eyebrow">Doomsday</div><h1>${T("profile")}</h1><p>${T("settings_title")}</p></div></div><div class="profile-layout"><section class="profile-card">${photoAvatar(user)}<h2>${escapeHtml(user.name)}</h2><p>${escapeHtml([user.area,user.city].filter(Boolean).join(", ")||T("country_india"))}</p><span class="verified-tag">✓ ${T("verified_user")}</span><div class="profile-stats"><div class="stat-box"><strong>★ ${Number(user.rating||0).toFixed(1)}</strong><span>${user.rating_count||0} ${T("reviews")}</span></div><div class="stat-box"><strong>${user.completed_tasks||0}</strong><span>${T("completed_tasks")}</span></div></div><button class="btn btn-outline" style="width:100%" data-action="edit-profile">${T("save")}</button></section><div class="profile-detail"><section class="profile-section"><h3>${T("settings_title")}</h3><div class="profile-row"><span>${T("phone")}</span><strong>${escapeHtml(user.phone||"")} <span class="verified-tag" style="padding:4px 7px">✓</span></strong></div><div class="profile-row"><span>${T("email")}</span><strong>${escapeHtml(user.email||"Not added")}</strong></div><div class="profile-row"><span>${T("student_mode")}</span><strong>${user.is_student?"✓":"—"}</strong></div><div class="profile-row"><span>${T("languages")}</span><strong>${escapeHtml((user.languages||[]).join(", "))}</strong></div><div class="profile-row"><span>${T("skills")}</span><strong>${escapeHtml((user.skills||[]).join(", ")||"Not added")}</strong></div><div class="profile-row"><span>${T("service_radius")}</span><strong>${user.service_radius_km} km</strong></div><div class="profile-row"><span>${T("joined")}</span><strong>${dateText(user.joined_at).split(",")[0]}</strong></div><div class="profile-row"><span>${T("payout")}</span><strong>${user.payout_connected?`✓ ${T("verified_user")}`:T("payout_not_ready")}</strong></div><div class="profile-row"><span>${T("lang_prompt")}</span><button class="lang-switch" data-action="toggle-lang">${state.lang==="en"?"தமிழ்":"English"}</button></div></section><section class="profile-section"><h3>${T("reviews")}</h3><div id="profile-reviews">${T("loading")}</div></section><section class="profile-section"><h3>${T("enable_push")}</h3><p class="field-help">Get chat and task updates on this device.</p><button class="btn btn-soft" data-action="enable-push" ${canEnablePush?"":"disabled"}>♧ ${T("enable_push")}</button>${!canEnablePush?`<p class="field-help">${T("notifications_unavailable")}</p>`:""}</section>${state.user.is_admin?`<section class="profile-section"><h3>${T("admin")}</h3><button class="btn btn-dark" data-action="nav" data-value="admin">⚙ ${T("open_admin")}</button></section>`:""}<section class="profile-section"><button class="btn btn-danger" data-action="sign-out">${T("sign_out")}</button></section></div></div>`;
   }
   function renderPostForm(){
     if(state.config?.platform_paused)return renderEmpty("🌿",T("account_paused"),"New posts are paused by the support team.");
@@ -381,7 +434,26 @@
       else{state.discoverLocation={lat:latitude,lng:longitude};state.filters.radius=Number(state.filters.radius||state.user.service_radius_km||10);try{state.user=(await api("/api/me",{method:"PATCH",body:{name:state.user.name,lat:latitude,lng:longitude}})).user;}catch(_){ }renderScreen();toast(T("distance_set"));}
     }catch(_){toast(T("current_location_error"));}
   }
-  async function enablePush(){if(nativeApp()){toast(T("notifications_unavailable"));return;}if(!state.config?.push_ready||!state.config.vapid_public_key){toast(T("notifications_unavailable"));return;}if(!("serviceWorker"in navigator)||!("PushManager"in window)){toast("Push notifications aren't supported by this browser.");return;}try{const permission=await Notification.requestPermission();if(permission!=="granted")throw new Error("Allow notifications in your browser settings to receive updates.");const registration=await navigator.serviceWorker.ready;const key=Uint8Array.from(atob(state.config.vapid_public_key.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));const sub=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});await api("/api/push/subscribe",{method:"POST",body:{subscription:sub}});toast(T("notifications_on"));}catch(err){toast(err.message||T("generic_error"));}}
+  async function enablePush(){
+    if(nativeApp()){
+      if(!nativePushAvailable()){toast(T("notifications_unavailable"));return;}
+      try{
+        await setupNativePushListeners();
+        let permission=await window.DoomsdayNative.checkPushPermissions();
+        if(permission.receive==="prompt")permission=await window.DoomsdayNative.requestPushPermissions();
+        if(permission.receive!=="granted")throw new Error("Allow notifications in iPhone Settings to receive task updates.");
+        const tokenPromise=new Promise((resolve,reject)=>{nativePushWaiter={resolve,reject};setTimeout(()=>{if(nativePushWaiter){nativePushWaiter=null;reject(new Error(T("notifications_unavailable")));}},12000);});
+        await window.DoomsdayNative.registerPush();
+        nativePushToken=await tokenPromise;
+        await syncNativePushToken();
+        toast(T("notifications_on"));
+      }catch(err){nativePushWaiter=null;toast(err.message||T("generic_error"));}
+      return;
+    }
+    if(!state.config?.push_ready||!state.config.vapid_public_key){toast(T("notifications_unavailable"));return;}
+    if(!("serviceWorker"in navigator)||!("PushManager"in window)){toast("Push notifications aren't supported by this browser.");return;}
+    try{const permission=await Notification.requestPermission();if(permission!=="granted")throw new Error("Allow notifications in your browser settings to receive updates.");const registration=await navigator.serviceWorker.ready;const key=Uint8Array.from(atob(state.config.vapid_public_key.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));const sub=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});await api("/api/push/subscribe",{method:"POST",body:{subscription:sub}});toast(T("notifications_on"));}catch(err){toast(err.message||T("generic_error"));}
+  }
 
   async function renderAdmin(target){
     const tabs=["overview","users","tasks","payments","disputes","reports","categories","settings"];
@@ -414,7 +486,7 @@
       if(action==="otp-back"){state.otpStage=false;renderAuth();return;}
       if(action==="toggle-language"){const list=state.user.languages||[];state.user.languages=list.includes(value)?list.filter(x=>x!==value):[...list,value];button.classList.toggle("selected",state.user.languages.includes(value));return;}
       if(action==="toggle-skill"){const list=state.user.skills||[];state.user.skills=list.includes(value)?list.filter(x=>x!==value):[...list,value];button.classList.toggle("selected",state.user.skills.includes(value));return;}
-      if(action==="sign-out"){if(!confirm(T("signout_confirm")))return;await api("/api/auth/logout",{method:"POST"}).catch(()=>{});await clearSessionToken();state.user=null;state.eventAbort?.abort();state.eventAbort=null;render();return;}
+      if(action==="sign-out"){if(!confirm(T("signout_confirm")))return;if(nativeApp()&&nativePushToken)await api("/api/push/native-token",{method:"DELETE",body:{token:nativePushToken}}).catch(()=>{});await api("/api/auth/logout",{method:"POST"}).catch(()=>{});await clearSessionToken();state.user=null;state.eventAbort?.abort();state.eventAbort=null;render();return;}
       if(action==="edit-profile"){state.onboarding=true;render();return;}
       if(action==="open-task"){await openTask(value);return;}
       if(action==="public-profile"){await openPublicProfile(value);return;}
@@ -492,7 +564,7 @@
         const phone=data.get("phone").replace(/\D/g,"");const result=await api("/api/auth/start",{method:"POST",body:{phone}});state.otpPhone=result.phone;state.otpStage=true;renderAuth();toast(result.message);return;
       }
       if(form.id==="otp-form"){
-        const result=await api("/api/auth/verify",{method:"POST",body:{phone:state.otpPhone,code:data.get("code")}});await saveSessionToken(result.token);state.user=result.user;state.onboarding=!result.user.name;state.otpStage=false;connectEvents();render();if(result.user.name)toast(T("welcome_back"));return;
+        const result=await api("/api/auth/verify",{method:"POST",body:{phone:state.otpPhone,code:data.get("code")}});await saveSessionToken(result.token);state.user=result.user;state.onboarding=!result.user.name;state.otpStage=false;connectEvents();render();if(nativeApp()&&nativePushAvailable())void registerNativePushIfAllowed();if(result.user.name)toast(T("welcome_back"));return;
       }
       if(form.id==="profile-form"){
         const body=Object.fromEntries(data.entries());body.languages=state.user.languages||["English"];body.skills=state.user.skills||[];body.is_student=!!form.elements.is_student?.checked;body.service_radius_km=Number(body.service_radius_km);const r=await api("/api/me",{method:"PATCH",body});state.user=r.user;state.onboarding=false;render();toast(T("profile_saved"));return;
